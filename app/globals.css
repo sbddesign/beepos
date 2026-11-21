@@ -1,14 +1,94 @@
+/*
+ * Hologram. The register as a security foil: dark chrome at rest, and a spectrum that
+ * only shows where the light lands. The light is two numbers, --tx and --ty (-1..1),
+ * written by app/fx/motion.tsx from device tilt, the pointer, or a slow drift. The values
+ * below are the resting light, and all anyone gets with prefers-reduced-motion.
+ */
+
+@property --press {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+
 :root {
-  --bg: #14120d;
-  --panel: #1e1b14;
-  --line: #353024;
-  --text: #f6f1e4;
-  --muted: #b3aa94;
-  --accent: #f5b700;
-  --accent-ink: #1a1500;
-  --good: #58c98b;
-  --bad: #ff8b7b;
+  --tx: 0.3;
+  --ty: -0.25;
+
+  --bg: #08070f;
+  --panel: #11101d;
+  --chrome-hi: #1d1b34;
+  --chrome-lo: #0c0b17;
+  --line: #2b2850;
+  --hair: rgba(178, 166, 255, 0.26);
+  --text: #f1efff;
+  --muted: #a9a4cf;
+  --accent: #cdbfff;
+  --ink: #0a0816;
+  --good: #8ff5c8;
+  --bad: #ffa3a3;
+
+  --display: var(--font-display), ui-rounded, system-ui, sans-serif;
+  --mono: var(--font-mono), ui-monospace, Menlo, monospace;
+
+  --sparkle: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.3' numOctaves='2' seed='7'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 14 -9.4'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  --waves: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='18' fill='none' stroke='%23b9a8ff' stroke-width='.6'%3E%3Cpath d='M0 9c15-12 45-12 60 0s45 12 60 0'/%3E%3Cpath d='M0 9c15 12 45 12 60 0s45-12 60 0'/%3E%3Cpath d='M0 3c15-8 45-8 60 0s45 8 60 0M0 15c15 8 45 8 60 0s45-8 60 0' opacity='.5'/%3E%3C/svg%3E");
+
   color-scheme: dark;
+}
+
+/*
+ * The foil itself. Three ingredients, resolved per element so each can set its own
+ * phase (--o), band width (--p) and glare position (--g):
+ *   --deep    a saturated diffraction grating, for dark chrome that catches the light
+ *   --pastel  the same grating in foil-sticker pastels, light enough to carry dark ink
+ *             or to be read as text on the dark ground (lowest band is 10:1 on --bg)
+ *   --glare   one white band of specular light
+ */
+.key::before,
+.btn,
+.balance,
+.amount,
+.brand,
+.lock-card h1,
+.paid h2,
+.emblem::after,
+.ticket,
+.seal-foil,
+.pulse,
+.wallet-head h2,
+.lock-card {
+  --o: calc((var(--tx) * 0.9 + var(--ty) * 0.6) * var(--p, 200px));
+  --g: calc(50% + var(--tx) * 62%);
+  --foil-angle: calc(108deg + var(--tx) * 22deg);
+  --deep: repeating-linear-gradient(
+    var(--foil-angle),
+    hsl(265 95% 62%) var(--o),
+    hsl(215 100% 58%) calc(var(--o) + var(--p, 200px) * 0.143),
+    hsl(186 95% 40%) calc(var(--o) + var(--p, 200px) * 0.286),
+    hsl(152 85% 38%) calc(var(--o) + var(--p, 200px) * 0.429),
+    hsl(40 100% 44%) calc(var(--o) + var(--p, 200px) * 0.571),
+    hsl(16 100% 52%) calc(var(--o) + var(--p, 200px) * 0.714),
+    hsl(325 95% 60%) calc(var(--o) + var(--p, 200px) * 0.857),
+    hsl(265 95% 62%) calc(var(--o) + var(--p, 200px))
+  );
+  --pastel: repeating-linear-gradient(
+    var(--foil-angle),
+    hsl(265 100% 84%) var(--o),
+    hsl(205 100% 80%) calc(var(--o) + var(--p, 200px) * 0.143),
+    hsl(170 90% 78%) calc(var(--o) + var(--p, 200px) * 0.286),
+    hsl(95 85% 82%) calc(var(--o) + var(--p, 200px) * 0.429),
+    hsl(50 100% 80%) calc(var(--o) + var(--p, 200px) * 0.571),
+    hsl(20 100% 82%) calc(var(--o) + var(--p, 200px) * 0.714),
+    hsl(325 100% 84%) calc(var(--o) + var(--p, 200px) * 0.857),
+    hsl(265 100% 84%) calc(var(--o) + var(--p, 200px))
+  );
+  --glare: linear-gradient(
+    var(--foil-angle),
+    transparent calc(var(--g) - 16%),
+    rgba(255, 255, 255, 0.9) var(--g),
+    transparent calc(var(--g) + 16%)
+  );
 }
 
 * {
@@ -21,12 +101,40 @@ body {
   margin: 0;
 }
 
-body {
+html {
   background: var(--bg);
+}
+
+body {
   color: var(--text);
-  font: 16px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font: 400 14.5px/1.5 var(--mono);
+  font-stretch: 82%;
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
+}
+
+/* Two soft lights behind everything that lean with the tilt, over banknote lathe-work. */
+body::before,
+body::after {
+  content: '';
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+}
+
+body::before {
+  inset: -12%;
+  background:
+    radial-gradient(42% 34% at 24% 12%, rgba(124, 92, 255, 0.34), transparent 70%),
+    radial-gradient(38% 30% at 82% 88%, rgba(0, 200, 190, 0.16), transparent 70%),
+    radial-gradient(30% 24% at 88% 18%, rgba(255, 90, 190, 0.1), transparent 70%);
+  transform: translate3d(calc(var(--tx) * -5%), calc(var(--ty) * -5%), 0);
+}
+
+body::after {
+  inset: 0;
+  background: var(--waves);
+  opacity: 0.07;
 }
 
 h1,
@@ -37,12 +145,14 @@ p {
 }
 
 h2 {
-  font-size: 1.4rem;
+  font: 600 1.25rem/1.2 var(--display);
+  letter-spacing: -0.01em;
 }
 
 h3 {
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
   margin-top: 0.5rem;
@@ -52,6 +162,7 @@ button,
 input,
 textarea {
   font: inherit;
+  font-stretch: inherit;
   color: inherit;
 }
 
@@ -77,25 +188,88 @@ textarea {
   justify-content: center;
 }
 
+/* Foil text: the pastel grating and the glare, cut to the letters. */
+.amount,
+.brand,
+.lock-card h1,
+.paid h2,
+.wallet-head h2 {
+  background-image: var(--glare), var(--pastel);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Buttons: dark chrome with a hairline, and a flare under the finger. */
+
+.btn,
+.key,
+.balance {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: --press 0.6s ease-out;
+}
+
+.btn:active:not(:disabled),
+.key:active,
+.balance:active {
+  --press: 1;
+  transition: --press 0s;
+}
+
+.btn::after,
+.balance::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    circle 5rem at var(--px, 50%) var(--py, 50%),
+    rgba(255, 255, 255, calc(var(--press) * 0.55)),
+    rgba(190, 170, 255, calc(var(--press) * 0.25)) 45%,
+    transparent 100%
+  );
+}
+
 .btn {
   min-height: 48px;
   padding: 0 1.1rem;
   border-radius: 12px;
-  border: 1px solid var(--line);
-  background: transparent;
-  font-weight: 600;
-  cursor: pointer;
+  border: 1px solid var(--hair);
+  background: linear-gradient(170deg, var(--chrome-hi), var(--chrome-lo));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 1px 0 #000;
+  font: 500 0.8rem/1 var(--display);
+  letter-spacing: 0.01em;
 }
 
+/* The primary action is a full foil sticker with dark ink on it. */
 .btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
+  --p: 260px;
+  border-color: rgba(255, 255, 255, 0.55);
+  background-image: var(--sparkle), var(--glare), var(--pastel);
+  background-position:
+    calc(var(--tx) * 34px) calc(var(--ty) * 34px),
+    0 0,
+    0 0;
+  color: var(--ink);
+  font-weight: 700;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -2px 0 rgba(40, 20, 90, 0.25),
+    0 0 26px -8px rgba(160, 140, 255, 0.75);
 }
 
 .btn:disabled {
-  opacity: 0.45;
+  opacity: 0.42;
   cursor: default;
+  box-shadow: none;
 }
 
 .btn:focus-visible,
@@ -128,17 +302,47 @@ summary:focus-visible {
 }
 
 .lock-card {
+  --p: 420px;
   width: min(100%, 22rem);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1rem;
   text-align: center;
+  padding: 2rem 1.4rem 1.6rem;
+  border-radius: 22px;
+  border: 1px solid transparent;
+  background:
+    linear-gradient(170deg, rgba(24, 22, 44, 0.96), rgba(10, 9, 20, 0.96)) padding-box,
+    var(--deep) border-box;
+  box-shadow: 0 30px 60px -30px #000;
 }
 
 .lock-card h1 {
-  font-size: 2.2rem;
-  letter-spacing: -0.02em;
+  font: 700 2rem/1.1 var(--display);
+  letter-spacing: -0.03em;
+}
+
+.emblem {
+  position: relative;
+  display: block;
+  width: 72px;
+  height: 72px;
+  filter: drop-shadow(0 0 18px rgba(150, 130, 255, 0.45));
+}
+
+.emblem img {
+  display: block;
+}
+
+.emblem::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  --p: 90px;
+  background-image: var(--sparkle), var(--glare), var(--pastel);
+  -webkit-mask: url('/emblem-mask.svg') center / contain no-repeat;
+  mask: url('/emblem-mask.svg') center / contain no-repeat;
 }
 
 /* App frame */
@@ -156,27 +360,30 @@ summary:focus-visible {
   align-items: center;
   justify-content: space-between;
   padding: 0.6rem 1rem;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--hair);
 }
 
 .brand {
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  font-size: 1.15rem;
+  --p: 120px;
+  font: 700 1.05rem/1 var(--display);
+  letter-spacing: -0.03em;
 }
 
 .balance {
+  --p: 160px;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
   min-height: 44px;
-  padding: 0 0.9rem;
+  padding: 0 0.95rem;
   border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  font-weight: 700;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(170deg, var(--chrome-hi), var(--chrome-lo)) padding-box,
+    var(--pastel) border-box;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
-  cursor: pointer;
+  box-shadow: 0 0 18px -8px rgba(160, 140, 255, 0.8);
 }
 
 .dot {
@@ -190,11 +397,12 @@ summary:focus-visible {
 
 .dot.synced {
   background: var(--good);
+  box-shadow: 0 0 8px var(--good);
 }
 
 .dot.offline,
 .dot.local {
-  background: var(--accent);
+  background: #ffd76a;
 }
 
 .panes {
@@ -238,30 +446,42 @@ summary:focus-visible {
 }
 
 .amount {
+  --p: 300px;
   display: block;
   text-align: center;
-  font-size: clamp(2.6rem, 13vw, 4.2rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  /* As large as fits on one line: --len is the character count. */
+  font: 700 min(3.6rem, calc((min(100vw, 26rem) - 2rem) / (var(--len, 6) * 0.74))) / 1.15
+    var(--display);
+  letter-spacing: -0.04em;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
   margin-top: auto;
-  overflow-wrap: anywhere;
+  white-space: nowrap;
+  filter: drop-shadow(0 0 16px rgba(150, 130, 255, 0.4));
+}
+
+/* The ₿ is set as a lighter currency mark in the system face, on purpose. */
+.bmark {
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-weight: 500;
+  font-size: 0.8em;
+  letter-spacing: 0;
+  margin-right: 0.08em;
 }
 
 .amount.zero {
-  color: var(--muted);
+  opacity: 0.5;
+  filter: none;
 }
 
 .amount.small {
-  font-size: 2.4rem;
+  font-size: 2.1rem;
   margin: 0;
 }
 
 .hint {
   text-align: center;
   color: var(--bad);
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .memo,
@@ -271,8 +491,9 @@ summary:focus-visible {
   min-height: 48px;
   padding: 0.6rem 0.9rem;
   border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel);
+  border: 1px solid var(--hair);
+  background: rgba(6, 5, 12, 0.8);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.7);
 }
 
 .memo::placeholder {
@@ -289,24 +510,120 @@ summary:focus-visible {
   gap: 0.5rem;
 }
 
+/*
+ * A key is dark chrome. The grating lies under a mask shaped like a pool of light, and
+ * the pool's position counts in keys: --kx and --ky say where this key sits in the grid,
+ * so one light crosses the whole pad as the phone tilts, column by column and row by row.
+ */
 .key {
+  --kx: 0;
+  --ky: 0;
+  --lx: calc(50% + (var(--tx) * 1.25 - var(--kx)) * 106%);
+  --ly: calc(50% + (var(--ty) * 1.8 - var(--ky)) * 108%);
   border-radius: 14px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  font-size: 1.6rem;
-  font-weight: 600;
-  cursor: pointer;
-  touch-action: manipulation;
+  border: 1px solid var(--hair);
+  background: linear-gradient(165deg, var(--chrome-hi), var(--chrome-lo) 70%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.6),
+    0 2px 0 #030208,
+    0 10px 16px -10px #000;
+  font: 500 1.45rem/1 var(--display);
+  /* A dark halo keeps the digit clear of the brightest band and the glitter. */
+  text-shadow:
+    0 1px 2px rgba(4, 2, 14, 0.9),
+    0 0 12px rgba(4, 2, 14, 0.85);
   user-select: none;
+  -webkit-user-select: none;
+}
+
+.key:nth-child(3n + 1) {
+  --kx: -1;
+}
+
+.key:nth-child(3n) {
+  --kx: 1;
+}
+
+.key:nth-child(-n + 3) {
+  --ky: -1.5;
+}
+
+.key:nth-child(n + 4):nth-child(-n + 6) {
+  --ky: -0.5;
+}
+
+.key:nth-child(n + 7):nth-child(-n + 9) {
+  --ky: 0.5;
+}
+
+.key:nth-child(n + 10) {
+  --ky: 1.5;
+}
+
+.key::before,
+.key::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+}
+
+.key::before {
+  --p: 190px;
+  --o: calc((var(--tx) * 0.9 + var(--ty) * 0.6 + var(--kx) * 0.23 + var(--ky) * 0.15) * 190px);
+  background: var(--deep);
+  opacity: 0.5;
+  -webkit-mask-image: radial-gradient(
+    circle 15rem at var(--lx) var(--ly),
+    #000 0%,
+    rgba(0, 0, 0, 0.62) 30%,
+    rgba(0, 0, 0, 0.26) 62%,
+    rgba(0, 0, 0, 0.13) 100%
+  );
+  mask-image: radial-gradient(
+    circle 15rem at var(--lx) var(--ly),
+    #000 0%,
+    rgba(0, 0, 0, 0.62) 30%,
+    rgba(0, 0, 0, 0.26) 62%,
+    rgba(0, 0, 0, 0.13) 100%
+  );
+}
+
+/* Glitter that only shows inside the pool of light, the specular spot, and the press flare. */
+.key::after {
+  background:
+    radial-gradient(
+      circle 4.5rem at var(--px, 50%) var(--py, 50%),
+      rgba(255, 255, 255, calc(var(--press) * 0.7)),
+      rgba(200, 180, 255, calc(var(--press) * 0.3)) 50%,
+      transparent 100%
+    ),
+    radial-gradient(circle 7rem at var(--lx) var(--ly), rgba(255, 255, 255, 0.14), transparent 100%),
+    var(--sparkle) calc(var(--tx) * 46px + var(--kx) * 31px) calc(var(--ty) * 46px + var(--ky) * 17px);
+  -webkit-mask-image: radial-gradient(circle 12rem at var(--lx) var(--ly), #000 10%, transparent 100%);
+  mask-image: radial-gradient(circle 12rem at var(--lx) var(--ly), #000 10%, transparent 100%);
+  mix-blend-mode: plus-lighter;
 }
 
 .key:active {
-  background: var(--line);
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 0 #030208,
+    0 4px 10px -8px #000;
+}
+
+/* Pressed, the whole key lights, wherever the pool is. */
+.key:active::after {
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 
 .charge {
   min-height: 60px;
-  font-size: 1.15rem;
+  font-size: 1rem;
 }
 
 /* Invoice and paid */
@@ -324,13 +641,82 @@ summary:focus-visible {
 
 .qr-link {
   width: min(100%, 20rem);
+  color: inherit;
+  text-decoration: none;
+  border-radius: 20px;
 }
 
+/* The ticket: a foil edge, punched notches, a ring of microprint, and a plain white code. */
+.ticket {
+  --p: 340px;
+  position: relative;
+  display: block;
+  padding: 1.15rem;
+  border-radius: 20px;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(170deg, #17152b, #0c0b17) padding-box,
+    var(--glare) border-box,
+    var(--pastel) border-box;
+  box-shadow: 0 0 34px -12px rgba(160, 140, 255, 0.8);
+  -webkit-mask:
+    radial-gradient(circle 9px at 0 50%, transparent 97%, #000 100%),
+    radial-gradient(circle 9px at 100% 50%, transparent 97%, #000 100%);
+  -webkit-mask-composite: source-in;
+  mask:
+    radial-gradient(circle 9px at 0 50%, transparent 97%, #000 100%),
+    radial-gradient(circle 9px at 100% 50%, transparent 97%, #000 100%);
+  mask-composite: intersect;
+}
+
+.micro {
+  position: absolute;
+  overflow: hidden;
+  white-space: nowrap;
+  font: 500 5.5px/1 var(--mono);
+  letter-spacing: 0.14em;
+  color: rgba(214, 204, 255, 0.78);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.micro.top,
+.micro.bottom {
+  left: 1.15rem;
+  right: 1.15rem;
+}
+
+.micro.top {
+  top: 0.42rem;
+}
+
+.micro.bottom {
+  bottom: 0.42rem;
+  transform: rotate(180deg);
+}
+
+.micro.left,
+.micro.right {
+  top: 1.15rem;
+  bottom: 1.15rem;
+  writing-mode: vertical-rl;
+}
+
+.micro.right {
+  right: 0.42rem;
+}
+
+.micro.left {
+  left: 0.42rem;
+  transform: rotate(180deg);
+}
+
+/* The code itself is never styled: black on white with its quiet zone, so it scans. */
 .qr {
   width: 100%;
   aspect-ratio: 1;
   background: #fff;
-  border-radius: 16px;
+  border-radius: 8px;
   overflow: hidden;
 }
 
@@ -348,10 +734,12 @@ summary:focus-visible {
 }
 
 .pulse {
+  --p: 30px;
   width: 0.7rem;
   height: 0.7rem;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--pastel);
+  box-shadow: 0 0 10px rgba(170, 150, 255, 0.9);
   animation: pulse 1.2s ease-in-out infinite;
 }
 
@@ -361,16 +749,77 @@ summary:focus-visible {
   }
 }
 
-.check {
-  width: 6rem;
-  height: 6rem;
-  border-radius: 50%;
+.paid h2 {
+  --p: 140px;
+  font-size: 1.9rem;
+}
+
+/* The paid seal: a guilloché rosette cut from foil. It lands, flares once, and settles. */
+.seal {
+  position: relative;
+  width: 12rem;
+  height: 12rem;
   display: grid;
   place-items: center;
-  background: var(--good);
-  color: #062514;
-  font-size: 3.2rem;
-  font-weight: 800;
+  filter: drop-shadow(0 0 22px rgba(160, 140, 255, 0.55));
+  animation: seal-land 0.7s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+.seal-foil,
+.seal-sweep {
+  position: absolute;
+  inset: 0;
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.seal-foil {
+  --p: 150px;
+  background:
+    var(--glare),
+    conic-gradient(
+      from calc(var(--tx) * 140deg + var(--ty) * 90deg),
+      hsl(265 100% 84%),
+      hsl(205 100% 80%),
+      hsl(170 90% 78%),
+      hsl(95 85% 82%),
+      hsl(50 100% 80%),
+      hsl(20 100% 82%),
+      hsl(325 100% 84%),
+      hsl(265 100% 84%)
+    );
+}
+
+.seal-sweep {
+  background: linear-gradient(100deg, transparent 35%, #fff 50%, transparent 65%) no-repeat;
+  background-size: 300% 100%;
+  animation: seal-sweep 1.3s 0.25s ease-out both;
+}
+
+.seal-check {
+  position: relative;
+  font: 800 2.7rem/1 system-ui, sans-serif;
+  color: var(--ink);
+}
+
+@keyframes seal-land {
+  from {
+    transform: scale(0.5) rotate(-40deg);
+    opacity: 0;
+  }
+}
+
+@keyframes seal-sweep {
+  from {
+    background-position: 120% 0;
+    opacity: 1;
+  }
+  to {
+    background-position: -20% 0;
+    opacity: 0;
+  }
 }
 
 /* Register panel */
@@ -394,11 +843,15 @@ summary:focus-visible {
   justify-content: space-between;
 }
 
+.wallet-head h2 {
+  --p: 160px;
+}
+
 .sync-line {
   display: flex;
   align-items: baseline;
   gap: 0.5rem;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .activity {
@@ -413,7 +866,7 @@ summary:focus-visible {
   align-items: center;
   gap: 1rem;
   padding: 0.7rem 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px dashed var(--hair);
   font-variant-numeric: tabular-nums;
 }
 
@@ -424,6 +877,7 @@ summary:focus-visible {
 }
 
 .activity strong {
+  font-weight: 600;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -435,11 +889,11 @@ summary:focus-visible {
 
 .activity .in {
   color: var(--good);
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .activity .out {
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .activity .dim {
@@ -471,21 +925,19 @@ summary:focus-visible {
 }
 
 .token {
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   word-break: break-all;
   resize: none;
 }
 
-.wallet .qr {
+.wallet .ticket {
   width: min(100%, 18rem);
   align-self: center;
 }
 
 .words {
-  font-family: ui-monospace, Menlo, monospace;
-  background: var(--panel);
-  border: 1px solid var(--line);
+  background: rgba(6, 5, 12, 0.8);
+  border: 1px solid var(--hair);
   border-radius: 12px;
   padding: 0.9rem;
   margin: 0.6rem 0;
@@ -493,8 +945,7 @@ summary:focus-visible {
 }
 
 .mint-url {
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   overflow-wrap: anywhere;
 }
 
@@ -513,7 +964,8 @@ summary {
     display: block;
     position: static;
     flex: 0 0 24rem;
-    border-left: 1px solid var(--line);
+    border-left: 1px solid var(--hair);
+    background: rgba(12, 11, 23, 0.72);
   }
 
   .balance {
@@ -526,7 +978,19 @@ summary {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pulse {
+  .pulse,
+  .seal,
+  .seal-sweep {
     animation: none;
+  }
+
+  .seal-sweep {
+    opacity: 0;
+  }
+
+  .btn,
+  .key,
+  .balance {
+    transition: none;
   }
 }

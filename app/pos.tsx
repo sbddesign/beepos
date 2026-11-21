@@ -7,6 +7,7 @@ import { deriveKeys } from '@/lib/keys';
 import { PasskeyError, register as createPasskey, unlock } from '@/lib/passkey';
 import { Register, browserEnv } from '@/lib/register';
 import type { Cashout, Sale } from '@/lib/state';
+import { Amount, Seal, Ticket, lenStyle } from './fx/foil';
 import { Qr } from './qr';
 
 const SESSION_KEY = 'beepos:session';
@@ -104,7 +105,9 @@ export function Pos({ mintUrl }: { mintUrl: string }) {
   return (
     <main className="lock">
       <div className="lock-card">
-        <img src="/icon.svg" alt="" width={72} height={72} />
+        <span className="emblem">
+          <img src="/icon.svg" alt="" width={72} height={72} />
+        </span>
         <h1>beepos</h1>
         <p className="muted">Take Lightning. Keep ecash. Your passkey is the only key.</p>
         {busy === 'open' ? (
@@ -273,8 +276,13 @@ function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sa
 
   return (
     <section className="keypad-view" aria-label="New sale">
-      <output className={`amount${digits ? '' : ' zero'}`} data-testid="amount" aria-live="polite">
-        {formatBitcoin(amount)}
+      <output
+        className={`amount${digits ? '' : ' zero'}`}
+        style={lenStyle(formatBitcoin(amount))}
+        data-testid="amount"
+        aria-live="polite"
+      >
+        <Amount text={formatBitcoin(amount)} />
       </output>
       <p className="hint" role={error || tooBig ? 'alert' : undefined}>
         {error || (tooBig ? `The most one sale can take is ${formatBitcoin(limits.max)}.` : ' ')}
@@ -378,11 +386,13 @@ function Invoice({
   return (
     <section className="center-view" aria-label="Waiting for payment">
       <p className="amount small" data-testid="invoice-amount">
-        {formatBitcoin(sale.amount)}
+        <Amount text={formatBitcoin(sale.amount)} />
       </p>
       {sale.memo && <p className="muted">{sale.memo}</p>}
       <a href={`lightning:${sale.request}`} className="qr-link" aria-label="Open in a wallet">
-        <Qr value={`lightning:${sale.request}`.toUpperCase()} label="Lightning invoice QR code" />
+        <Ticket>
+          <Qr value={`lightning:${sale.request}`.toUpperCase()} label="Lightning invoice QR code" />
+        </Ticket>
       </a>
       <p className="waiting" role="status">
         <span className="pulse" aria-hidden /> {problem || 'Waiting for payment…'}
@@ -401,11 +411,11 @@ function Invoice({
 function Paid({ sale, onDone }: { sale: Sale; onDone: () => void }) {
   return (
     <section className="center-view paid" aria-label="Paid">
-      <div className="check" aria-hidden>
-        ✓
-      </div>
+      <Seal />
       <h2 role="status">Paid</h2>
-      <p className="amount small">{formatBitcoin(sale.amount)}</p>
+      <p className="amount small">
+        <Amount text={formatBitcoin(sale.amount)} />
+      </p>
       {sale.memo && <p className="muted">{sale.memo}</p>}
       <button className="btn primary" onClick={onDone} autoFocus>
         New sale
@@ -477,7 +487,7 @@ function WalletPanel({
         </button>
       </div>
       <p className="amount small" data-testid="wallet-balance">
-        {formatBitcoin(register.balance)}
+        <Amount text={formatBitcoin(register.balance)} />
       </p>
       <p className="muted sync-line">
         <SyncDot status={register.sync} /> {syncText}
@@ -656,7 +666,11 @@ function CashOut({
         <p className="muted">
           This token is the money. Paste or scan it into any Cashu wallet to receive it.
         </p>
-        {token.token.length <= 1200 && <Qr value={token.token} label="Cashu token QR code" />}
+        {token.token.length <= 1200 && (
+          <Ticket>
+            <Qr value={token.token} label="Cashu token QR code" />
+          </Ticket>
+        )}
         <textarea className="token" readOnly value={token.token} data-testid="token" rows={4} />
         <div className="row">
           <CopyButton text={token.token} label="Copy token" />

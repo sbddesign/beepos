@@ -1,5 +1,16 @@
 import type { Metadata, Viewport } from 'next';
+import { Martian_Mono, Unbounded } from 'next/font/google';
+import { Motion } from './fx/motion';
 import './globals.css';
+
+// Unbounded for the brand and the numerals, Martian Mono (condensed) for everything read.
+const display = Unbounded({ subsets: ['latin'], variable: '--font-display', display: 'swap' });
+const mono = Martian_Mono({
+  subsets: ['latin'],
+  axes: ['wdth'],
+  variable: '--font-mono',
+  display: 'swap',
+});
 
 export const metadata: Metadata = {
   title: 'beepos',
@@ -13,13 +24,16 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   viewportFit: 'cover',
-  themeColor: '#14120d',
+  themeColor: '#08070f',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="en" className={`${display.variable} ${mono.variable}`}>
+      <body>
+        <Motion />
+        {children}
+      </body>
     </html>
   );
 }

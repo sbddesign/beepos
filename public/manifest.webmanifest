@@ -3,7 +3,7 @@
   "short_name": "beepos",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#14120d",
-  "theme_color": "#14120d",
+  "background_color": "#08070f",
+  "theme_color": "#08070f",
   "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
 }
