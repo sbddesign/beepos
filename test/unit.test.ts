@@ -4,7 +4,7 @@ import { deriveKeys } from '@/lib/keys';
 import { emptyState, merge, sameState, type RegisterState } from '@/lib/state';
 import { signRequest, verifyRequest } from '@/lib/vault-auth';
 import { open, seal } from '@/lib/vault-crypto';
-import { MemoryVaultStore } from '@/lib/vault-store';
+import { MemoryVaultStore, parseRecord } from '@/lib/vault-store';
 import { GET, PUT } from '@/app/api/vault/route';
 
 const prf = new Uint8Array(32).fill(7);
@@ -153,5 +153,11 @@ describe('vault API', () => {
     const store = new MemoryVaultStore();
     expect(await store.put('x', 0, 'a')).toEqual({ ok: true, version: 1 });
     expect(await store.put('x', 0, 'b')).toEqual({ ok: false, current: { version: 1, blob: 'a' } });
+  });
+
+  it('reads the stored record format', () => {
+    expect(parseRecord('12:AAAA+/==')).toEqual({ version: 12, blob: 'AAAA+/==' });
+    expect(parseRecord(null)).toBeNull();
+    expect(parseRecord(['version', '1'])).toBeNull();
   });
 });

@@ -27,26 +27,31 @@ export class MemoryVaultStore implements VaultStore {
   }
 }
 
+// Each record is one string, "<version>:<blob>". (A hash would not do: with
+// automatic deserialization off, HGETALL comes back as a flat array.)
 const CAS = `
-local v = tonumber(redis.call('HGET', KEYS[1], 'version') or '0')
+local cur = redis.call('GET', KEYS[1])
+local v = 0
+if cur then v = tonumber(string.match(cur, '^(%d+):')) end
 if v ~= tonumber(ARGV[1]) then return -1 end
-redis.call('HSET', KEYS[1], 'version', v + 1, 'blob', ARGV[2])
+redis.call('SET', KEYS[1], (v + 1) .. ':' .. ARGV[2])
 return v + 1
 `;
+
+export function parseRecord(raw: unknown): VaultRecord | null {
+  const m = typeof raw === 'string' ? /^(\d+):(.*)$/s.exec(raw) : null;
+  return m ? { version: Number(m[1]), blob: m[2] } : null;
+}
 
 export class RedisVaultStore implements VaultStore {
   constructor(private redis: Redis) {}
 
   private key(accountId: string) {
-    return `beepos:vault:${accountId}`;
+    return `beepos:v1:vault:${accountId}`;
   }
 
   async get(accountId: string) {
-    const rec = await this.redis.hgetall<{ version: number | string; blob: string }>(
-      this.key(accountId),
-    );
-    if (!rec || rec.blob == null) return null;
-    return { version: Number(rec.version), blob: String(rec.blob) };
+    return parseRecord(await this.redis.get(this.key(accountId)));
   }
 
   async put(accountId: string, baseVersion: number, blob: string): Promise<PutResult> {
