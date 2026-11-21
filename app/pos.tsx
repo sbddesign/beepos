@@ -7,6 +7,7 @@ import { deriveKeys } from '@/lib/keys';
 import { PasskeyError, register as createPasskey, unlock } from '@/lib/passkey';
 import { Register, browserEnv } from '@/lib/register';
 import type { Cashout, Sale } from '@/lib/state';
+import { keyClick } from './fx/feel';
 import { Qr } from './qr';
 
 const SESSION_KEY = 'beepos:session';
@@ -294,10 +295,14 @@ function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sa
           <button
             key={key}
             className="key"
+            onPointerDown={keyClick}
             onClick={() => press(key)}
             aria-label={key === 'back' ? 'Delete last digit' : key}
           >
-            {key === 'back' ? '⌫' : key}
+            <span className="face" aria-hidden>
+              <span className="turn" />
+            </span>
+            <span className="legend">{key === 'back' ? '⌫' : key}</span>
           </button>
         ))}
       </div>

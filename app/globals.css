@@ -1,14 +1,49 @@
+/*
+ * beepos, machined. The terminal is one piece of bead-blasted metal under one
+ * lamp. --tilt-x and --tilt-y (each -1..1, written by app/fx/motion.ts) say where
+ * that lamp is. Everything that moves with it is a pre-painted layer moved with a
+ * transform, so tilting never repaints a gradient.
+ */
+
 :root {
-  --bg: #14120d;
-  --panel: #1e1b14;
-  --line: #353024;
-  --text: #f6f1e4;
-  --muted: #b3aa94;
-  --accent: #f5b700;
-  --accent-ink: #1a1500;
-  --good: #58c98b;
-  --bad: #ff8b7b;
-  color-scheme: dark;
+  --tilt-x: -0.25;
+  --tilt-y: -0.25;
+
+  --metal: #c6c9cd;
+  --metal-hi: #eceef0;
+  --metal-lo: #9da1a6;
+  --edge-dark: rgba(18, 20, 24, 0.42);
+  --edge-light: rgba(255, 255, 255, 0.8);
+  --ink: #14161a;
+  --muted: #22262b;
+  --glass: #120f08;
+  --phosphor: #ffb62e;
+  --phosphor-dim: #a8802a;
+  --anodized: #f57c00;
+  --anodized-hi: #ff9d2e;
+  --anodized-ink: #1f0e00;
+  --good: #064a27;
+  --bad: #7d1509;
+  --link: #6b3400;
+  --lamp-green: #2fe07f;
+  --lamp-amber: #ffb000;
+
+  --font-ui: var(--font-legend), var(--font-readout), 'DIN Alternate', system-ui, sans-serif;
+  --font-display: var(--font-readout), ui-monospace, Menlo, monospace;
+
+  /* Fine blast grain. The filter region is clamped so the tile has no solid margin. */
+  --grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='1.1' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.44 -0.16'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* Long horizontal brushing, for plates and anodized parts. */
+  --brushed: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='120'%3E%3Cfilter id='n' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.5 -0.17'/%3E%3C/filter%3E%3Crect width='240' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* The same brushing, fainter, for plates that carry small text. */
+  --brushed-soft: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='120'%3E%3Cfilter id='n' x='0' y='0' width='1' height='1'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.26 -0.09'/%3E%3C/filter%3E%3Crect width='240' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+  /* Drilled holes for the beeper. */
+  --grille: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 90 34'%3E%3Cpattern id='h' width='10' height='10' patternUnits='userSpaceOnUse'%3E%3Ccircle cx='5' cy='5.6' r='2.6' fill='%23fff' fill-opacity='.75'/%3E%3Ccircle cx='5' cy='5' r='2.5' fill='%2317191c'/%3E%3Ccircle cx='5' cy='5.9' r='1.5' fill='%2334383d'/%3E%3C/pattern%3E%3Crect x='10' y='2' width='70' height='10' fill='url(%23h)'/%3E%3Crect y='12' width='90' height='10' fill='url(%23h)'/%3E%3Crect x='10' y='22' width='70' height='10' fill='url(%23h)'/%3E%3C/svg%3E");
+  /* Two slotted fasteners, turned to different angles. */
+  --screw-a: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3CradialGradient id='g' cx='.35' cy='.3' r='.8'%3E%3Cstop offset='0' stop-color='%23f4f5f6'/%3E%3Cstop offset='.6' stop-color='%23a9adb2'/%3E%3Cstop offset='1' stop-color='%23767a80'/%3E%3C/radialGradient%3E%3Ccircle cx='8' cy='8' r='7.2' fill='%2350545a'/%3E%3Ccircle cx='8' cy='8' r='6.2' fill='url(%23g)'/%3E%3Cpath d='M2.6 8h10.8' stroke='%232b2e33' stroke-width='1.5' transform='rotate(-32 8 8)'/%3E%3C/svg%3E");
+  --screw-b: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3CradialGradient id='g' cx='.35' cy='.3' r='.8'%3E%3Cstop offset='0' stop-color='%23f4f5f6'/%3E%3Cstop offset='.6' stop-color='%23a9adb2'/%3E%3Cstop offset='1' stop-color='%23767a80'/%3E%3C/radialGradient%3E%3Ccircle cx='8' cy='8' r='7.2' fill='%2350545a'/%3E%3Ccircle cx='8' cy='8' r='6.2' fill='url(%23g)'/%3E%3Cpath d='M2.6 8h10.8' stroke='%232b2e33' stroke-width='1.5' transform='rotate(58 8 8)'/%3E%3C/svg%3E");
+
+  color-scheme: light;
 }
 
 * {
@@ -22,11 +57,27 @@ body {
 }
 
 body {
-  background: var(--bg);
-  color: var(--text);
-  font: 16px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background: var(--metal) var(--grain);
+  color: var(--ink);
+  font: 500 17px/1.4 var(--font-ui);
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+/* The lamp: a broad soft pool of light that slides across the chassis. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -45%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(closest-side at 50% 42%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0) 70%),
+    radial-gradient(farthest-side at 50% 50%, rgba(0, 0, 0, 0) 55%, rgba(20, 24, 30, 0.1));
+  transform: translate3d(calc(var(--tilt-x) * 16%), calc(var(--tilt-y) * 14%), 0);
+  will-change: transform;
 }
 
 h1,
@@ -37,15 +88,20 @@ p {
 }
 
 h2 {
-  font-size: 1.4rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-shadow: 0 1px 0 var(--edge-light);
 }
 
 h3 {
-  font-size: 0.8rem;
-  letter-spacing: 0.08em;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--muted);
   margin-top: 0.5rem;
+  text-shadow: 0 1px 0 var(--edge-light);
 }
 
 button,
@@ -61,6 +117,7 @@ textarea {
 
 .error {
   color: var(--bad);
+  font-weight: 600;
 }
 
 .stack {
@@ -73,29 +130,76 @@ textarea {
 .row {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.5rem;
+  gap: 0.6rem;
   justify-content: center;
 }
 
+/* Buttons: flat machined tabs. The primary one is anodized. */
+
 .btn {
+  position: relative;
   min-height: 48px;
   padding: 0 1.1rem;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: transparent;
-  font-weight: 600;
+  border-radius: 9px;
+  border: 0;
+  background:
+    var(--brushed),
+    linear-gradient(#e3e5e8, #b9bdc2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(40, 44, 50, 0.55),
+    0 2px 0 1px rgba(40, 44, 50, 0.35),
+    0 5px 8px -2px rgba(0, 0, 0, 0.35);
+  isolation: isolate;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.92rem;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.75);
   cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    transform 70ms ease-out,
+    box-shadow 70ms ease-out;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.18),
+    0 0 0 1px rgba(40, 44, 50, 0.6),
+    0 0 0 1px rgba(40, 44, 50, 0.35),
+    0 1px 2px rgba(0, 0, 0, 0.3);
 }
 
 .btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--accent-ink);
+  background:
+    var(--brushed),
+    linear-gradient(var(--anodized-hi), var(--anodized));
+  color: var(--anodized-ink);
+  text-shadow: 0 1px 0 rgba(255, 214, 150, 0.7);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 226, 180, 0.9),
+    inset 0 -1px 0 rgba(90, 36, 0, 0.35),
+    0 0 0 1px rgba(92, 40, 0, 0.75),
+    0 2px 0 1px rgba(92, 40, 0, 0.5),
+    0 5px 8px -2px rgba(0, 0, 0, 0.4);
 }
 
+/* Not armed: bare, unlit metal instead of a faded orange. */
 .btn:disabled {
-  opacity: 0.45;
   cursor: default;
+  color: #3f444a;
+  background:
+    var(--brushed),
+    linear-gradient(#bfc2c6, #a9adb2);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    0 0 0 1px rgba(40, 44, 50, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .btn:focus-visible,
@@ -105,20 +209,59 @@ textarea {
 input:focus-visible,
 textarea:focus-visible,
 summary:focus-visible {
-  outline: 3px solid var(--accent);
-  outline-offset: 2px;
+  outline: 3px solid var(--ink);
+  outline-offset: 3px;
 }
 
 .link {
   background: none;
   border: 0;
   padding: 0;
-  color: var(--accent);
+  color: var(--link);
+  font-weight: 700;
   text-decoration: underline;
   cursor: pointer;
 }
 
-/* Lock screen */
+/* Jewel lamps */
+
+.dot,
+.pulse,
+.paid h2::before {
+  display: inline-block;
+  flex: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+  --lamp: #6d7177;
+  background: radial-gradient(
+    circle at 35% 30%,
+    #fff 0 10%,
+    var(--lamp) 38%,
+    color-mix(in srgb, var(--lamp) 55%, #000) 100%
+  );
+  box-shadow:
+    0 0 0 2px #5d6166,
+    0 0 0 3px rgba(255, 255, 255, 0.55),
+    0 0 9px 1px color-mix(in srgb, var(--lamp) 70%, transparent);
+}
+
+.dot.synced {
+  --lamp: var(--lamp-green);
+}
+
+.dot.offline,
+.dot.local {
+  --lamp: var(--lamp-amber);
+}
+
+.dot.syncing {
+  box-shadow:
+    0 0 0 2px #5d6166,
+    0 0 0 3px rgba(255, 255, 255, 0.55);
+}
+
+/* Lock screen: a plate held on by four fasteners. */
 
 .lock {
   min-height: 100dvh;
@@ -134,11 +277,49 @@ summary:focus-visible {
   align-items: center;
   gap: 1rem;
   text-align: center;
+  padding: 2.4rem 1.5rem 2rem;
+  border-radius: 14px;
+  background:
+    var(--screw-a) 10px 10px / 14px 14px no-repeat,
+    var(--screw-b) calc(100% - 10px) 10px / 14px 14px no-repeat,
+    var(--screw-b) 10px calc(100% - 10px) / 14px 14px no-repeat,
+    var(--screw-a) calc(100% - 10px) calc(100% - 10px) / 14px 14px no-repeat,
+    var(--brushed),
+    linear-gradient(160deg, #dfe1e4, #c2c5c9);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2),
+    0 0 0 1px rgba(40, 44, 50, 0.5),
+    0 2px 0 1px rgba(40, 44, 50, 0.3),
+    0 18px 30px -12px rgba(0, 0, 0, 0.45);
+}
+
+.lock-card img {
+  border-radius: 16px;
+  box-shadow:
+    0 0 0 1px rgba(40, 44, 50, 0.6),
+    0 1px 0 2px rgba(255, 255, 255, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.4);
 }
 
 .lock-card h1 {
-  font-size: 2.2rem;
-  letter-spacing: -0.02em;
+  font-family: var(--font-display);
+  font-size: 2.3rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85),
+    0 -1px 0 rgba(0, 0, 0, 0.25);
+}
+
+.lock-card h1::after {
+  content: 'BP-01 · LIGHTNING / ECASH TERMINAL';
+  display: block;
+  margin-top: 0.3rem;
+  font: 700 0.62rem/1 var(--font-ui);
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
 }
 
 /* App frame */
@@ -151,50 +332,75 @@ summary:focus-visible {
     env(safe-area-inset-left);
 }
 
+/* The top rail, with a milled groove under it. */
 .bar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0.6rem 1rem;
-  border-bottom: 1px solid var(--line);
+  background: var(--brushed), linear-gradient(#dcdee1, #c3c6ca);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 0 var(--edge-dark),
+    0 2px 0 var(--edge-light);
+  position: relative;
+  z-index: 3;
 }
 
 .brand {
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  font-size: 1.15rem;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  font-size: 1.25rem;
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.85),
+    0 -1px 0 rgba(0, 0, 0, 0.22);
 }
 
+.brand::after {
+  content: 'BP-01';
+  font: 700 0.6rem/1 var(--font-ui);
+  letter-spacing: 0.2em;
+  color: var(--muted);
+  padding: 0.2rem 0.35rem;
+  border-radius: 3px;
+  box-shadow:
+    inset 0 1px 1px rgba(0, 0, 0, 0.35),
+    0 1px 0 rgba(255, 255, 255, 0.7);
+  text-shadow: none;
+}
+
+/* The balance is a second, smaller readout. */
 .balance {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.55rem;
   min-height: 44px;
-  padding: 0 0.9rem;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  font-weight: 700;
+  padding: 0 0.9rem 0 0.8rem;
+  border-radius: 8px;
+  border: 0;
+  background: linear-gradient(#0c0a05, var(--glass));
+  color: var(--phosphor);
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 1.05rem;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 8px rgba(255, 160, 0, 0.55);
+  box-shadow:
+    inset 0 2px 5px rgba(0, 0, 0, 0.9),
+    0 0 0 1px #3c4046,
+    0 1px 0 2px rgba(255, 255, 255, 0.75),
+    0 -1px 0 2px rgba(0, 0, 0, 0.18);
   cursor: pointer;
 }
 
-.dot {
-  display: inline-block;
-  width: 0.6rem;
-  height: 0.6rem;
-  border-radius: 50%;
-  background: var(--muted);
-  flex: none;
-}
-
-.dot.synced {
-  background: var(--good);
-}
-
-.dot.offline,
-.dot.local {
-  background: var(--accent);
+.balance .dot {
+  box-shadow:
+    0 0 0 2px #2a2c30,
+    0 0 9px 1px color-mix(in srgb, var(--lamp) 70%, transparent);
 }
 
 .panes {
@@ -216,7 +422,7 @@ summary:focus-visible {
   display: none;
   position: absolute;
   inset: 0;
-  background: var(--bg);
+  background: var(--brushed-soft), linear-gradient(170deg, #dcdee1, #c6c9cd);
   overflow-y: auto;
   z-index: 2;
 }
@@ -235,48 +441,123 @@ summary:focus-visible {
   flex-direction: column;
   gap: 0.6rem;
   padding: 1rem;
+  background:
+    var(--screw-a) 8px 10px / 13px 13px no-repeat,
+    var(--screw-b) calc(100% - 8px) 10px / 13px 13px no-repeat,
+    var(--grille) center 14px / 90px 34px no-repeat;
 }
 
-.amount {
-  display: block;
+.keypad-view::after {
+  content: 'BP-01 · SER 000177 · LIGHTNING IN / ECASH HELD';
+  flex: none;
   text-align: center;
-  font-size: clamp(2.6rem, 13vw, 4.2rem);
-  font-weight: 700;
-  letter-spacing: -0.03em;
+  font: 700 0.58rem/1 var(--font-ui);
+  letter-spacing: 0.22em;
+  color: var(--muted);
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.7);
+  padding-top: 0.15rem;
+}
+
+/* The readout: dark glass set into the chassis, amber phosphor behind it. */
+.amount {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  text-align: center;
+  margin-top: auto;
+  padding: 0.28em 0.35em 0.22em;
+  border-radius: 10px;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(255, 170, 40, 0.07), transparent 60%),
+    linear-gradient(#0a0804, var(--glass));
+  color: var(--phosphor);
+  font-family: var(--font-display);
+  font-size: clamp(2.3rem, 11.5vw, 3.9rem);
+  font-weight: 500;
+  letter-spacing: 0.01em;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
-  margin-top: auto;
   overflow-wrap: anywhere;
+  text-shadow:
+    0 0 2px rgba(255, 214, 130, 0.7),
+    0 0 14px rgba(255, 150, 0, 0.6),
+    0 0 34px rgba(255, 130, 0, 0.3);
+  box-shadow:
+    inset 0 3px 8px rgba(0, 0, 0, 0.95),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.8),
+    0 0 0 2px #45494f,
+    0 0 0 3px rgba(20, 22, 26, 0.5),
+    0 2px 0 3px rgba(255, 255, 255, 0.8),
+    0 -1px 0 3px rgba(0, 0, 0, 0.22);
+}
+
+/* Scanlines over the phosphor. */
+.amount::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.26) 0 1px, transparent 1px 3px);
+}
+
+/* A reflection on the glass that slides as the terminal tilts. */
+.amount::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 220%;
+  pointer-events: none;
+  background: linear-gradient(
+    104deg,
+    transparent 38%,
+    rgba(255, 255, 255, 0.02) 42%,
+    rgba(255, 255, 255, 0.2) 47%,
+    rgba(255, 255, 255, 0.04) 52%,
+    transparent 58%
+  );
+  transform: translate3d(calc(var(--tilt-x) * 24%), 0, 0);
+  will-change: transform;
 }
 
 .amount.zero {
-  color: var(--muted);
+  color: var(--phosphor-dim);
+  text-shadow: 0 0 10px rgba(255, 150, 0, 0.25);
 }
 
 .amount.small {
-  font-size: 2.4rem;
+  font-size: 2.3rem;
   margin: 0;
+  min-width: min(100%, 13rem);
 }
 
 .hint {
   text-align: center;
   color: var(--bad);
-  font-size: 0.9rem;
+  font-weight: 600;
+  font-size: 0.95rem;
 }
 
+/* Fields are label windows cut into the plate. */
 .memo,
 .field input,
 .token {
   width: 100%;
   min-height: 48px;
   padding: 0.6rem 0.9rem;
-  border-radius: 12px;
-  border: 1px solid var(--line);
-  background: var(--panel);
+  border-radius: 8px;
+  border: 0;
+  background: #eef0f2;
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 1px rgba(40, 44, 50, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .memo::placeholder {
-  color: var(--muted);
+  color: #4a4f56;
+  letter-spacing: 0.04em;
 }
 
 .keys {
@@ -286,27 +567,178 @@ summary:focus-visible {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   grid-auto-rows: 1fr;
-  gap: 0.5rem;
+  gap: 0.65rem;
+  padding: 0.2rem 0.1rem 0.45rem;
 }
 
+/*
+ * A keycap. The button is the skirt and the seat shadow; .face is the turned top,
+ * which rides down over the skirt when pressed; .turn is the lathe finish, painted
+ * once and rotated with the lamp.
+ */
 .key {
+  position: relative;
+  isolation: isolate;
+  padding: 0;
+  border: 0;
   border-radius: 14px;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  font-size: 1.6rem;
+  background: linear-gradient(#8b8f95 60%, #5f6368);
+  box-shadow:
+    0 0 0 1px rgba(30, 33, 38, 0.7),
+    0 1px 0 2px rgba(255, 255, 255, 0.6),
+    0 7px 7px -2px rgba(0, 0, 0, 0.45),
+    0 14px 16px -6px rgba(0, 0, 0, 0.35);
+  font-size: 1.75rem;
   font-weight: 600;
   cursor: pointer;
   touch-action: manipulation;
   user-select: none;
+  -webkit-user-select: none;
+  transition: box-shadow 60ms ease-out;
+}
+
+.key .face {
+  position: absolute;
+  inset: 1px 1px 7px 1px;
+  z-index: -1;
+  border-radius: 13px;
+  overflow: hidden;
+  background: #d3d6d9;
+  transition: transform 60ms ease-out;
+}
+
+.key .turn {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 230%;
+  aspect-ratio: 1;
+  margin: -115% 0 0 -115%;
+  border-radius: 50%;
+  background:
+    repeating-radial-gradient(
+      circle,
+      rgba(255, 255, 255, 0.1) 0 0.6px,
+      rgba(0, 0, 0, 0.07) 0.6px 1.3px,
+      transparent 1.3px 2.6px
+    ),
+    conic-gradient(
+      from 20deg,
+      #f7f8f9 0deg,
+      #c9ccd0 26deg,
+      #9a9ea4 58deg,
+      #c4c7cb 82deg,
+      #eef0f1 104deg,
+      #bfc2c6 128deg,
+      #a3a7ac 150deg,
+      #d6d8db 172deg,
+      #f7f8f9 180deg,
+      #c9ccd0 206deg,
+      #9a9ea4 238deg,
+      #c4c7cb 262deg,
+      #eef0f1 284deg,
+      #bfc2c6 308deg,
+      #a3a7ac 330deg,
+      #d6d8db 352deg,
+      #f7f8f9 360deg
+    );
+  transform: rotate(calc(var(--tilt-x) * 55deg + var(--tilt-y) * 30deg));
+  will-change: transform;
+}
+
+/* The chamfer around the top, drawn over the lathe finish. */
+.key .face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.95),
+    inset 0 0 0 1.5px rgba(255, 255, 255, 0.35),
+    inset 0 -2px 1px rgba(0, 0, 0, 0.22),
+    inset 0 0 12px rgba(255, 255, 255, 0.25);
+  transition: box-shadow 60ms ease-out;
+}
+
+.key .legend {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding-bottom: 6px;
+  color: var(--ink);
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8),
+    0 -1px 0 rgba(0, 0, 0, 0.3);
+  transition: transform 60ms ease-out;
 }
 
 .key:active {
-  background: var(--line);
+  box-shadow:
+    0 0 0 1px rgba(30, 33, 38, 0.75),
+    0 1px 0 2px rgba(255, 255, 255, 0.6),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    0 2px 3px -1px rgba(0, 0, 0, 0.4);
 }
 
+.key:active .face,
+.key:active .legend {
+  transform: translateY(5px);
+}
+
+.key:active .face::after {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    inset 0 0 0 1.5px rgba(0, 0, 0, 0.12),
+    inset 0 3px 8px rgba(0, 0, 0, 0.28),
+    inset 0 0 26px rgba(0, 0, 0, 0.12);
+}
+
+/* Charge: the one anodized part on the face, with an arming lamp. */
 .charge {
-  min-height: 60px;
+  min-height: 62px;
   font-size: 1.15rem;
+  letter-spacing: 0.1em;
+  overflow: hidden;
+}
+
+.charge::before {
+  content: '';
+  position: absolute;
+  left: 0.9rem;
+  top: 50%;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-top: -0.275rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff 0 14%, #fff3c4 40%, #ffcf5a);
+  box-shadow:
+    0 0 0 2px rgba(92, 40, 0, 0.8),
+    0 0 10px 2px rgba(255, 244, 200, 0.9);
+}
+
+.charge:disabled::before {
+  background: radial-gradient(circle at 35% 30%, #9a9ea4, #55595f);
+  box-shadow: 0 0 0 2px rgba(40, 44, 50, 0.6);
+}
+
+/* A sheen that crosses the anodizing with the lamp. */
+.charge:not(:disabled)::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 220%;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 40%,
+    rgba(255, 240, 210, 0.38) 49%,
+    transparent 58%
+  );
+  transform: translate3d(calc(var(--tilt-x) * 26%), 0, 0);
+  will-change: transform;
 }
 
 /* Invoice and paid */
@@ -322,16 +754,35 @@ summary:focus-visible {
   text-align: center;
 }
 
+/* The QR is a white label in a machined bezel. Black on white, nothing over it. */
 .qr-link {
   width: min(100%, 20rem);
+  padding: 14px;
+  border-radius: 14px;
+  background:
+    var(--screw-a) 3px 3px / 9px 9px no-repeat,
+    var(--screw-b) calc(100% - 3px) 3px / 9px 9px no-repeat,
+    var(--screw-b) 3px calc(100% - 3px) / 9px 9px no-repeat,
+    var(--screw-a) calc(100% - 3px) calc(100% - 3px) / 9px 9px no-repeat,
+    var(--brushed),
+    linear-gradient(150deg, #b4b8bd, #8f9398);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.8),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.3),
+    0 0 0 1px rgba(30, 33, 38, 0.65),
+    0 2px 0 1px rgba(255, 255, 255, 0.6),
+    0 14px 22px -10px rgba(0, 0, 0, 0.5);
 }
 
 .qr {
   width: 100%;
   aspect-ratio: 1;
   background: #fff;
-  border-radius: 16px;
+  border-radius: 4px;
   overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(20, 22, 26, 0.7),
+    0 0 0 2px rgba(255, 255, 255, 0.35);
 }
 
 .qr svg {
@@ -343,37 +794,111 @@ summary:focus-visible {
 .waiting {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.7rem;
   color: var(--muted);
+  font-weight: 600;
 }
 
 .pulse {
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 50%;
-  background: var(--accent);
+  --lamp: var(--lamp-amber);
   animation: pulse 1.2s ease-in-out infinite;
 }
 
 @keyframes pulse {
   50% {
-    opacity: 0.25;
+    filter: brightness(0.45) saturate(0.6);
+    box-shadow:
+      0 0 0 2px #5d6166,
+      0 0 0 3px rgba(255, 255, 255, 0.55);
   }
 }
 
+/* Paid: the mark is struck into the plate and a green lamp comes on. */
 .check {
   width: 6rem;
   height: 6rem;
   border-radius: 50%;
   display: grid;
   place-items: center;
-  background: var(--good);
-  color: #062514;
-  font-size: 3.2rem;
+  color: var(--good);
+  font-size: 3.4rem;
   font-weight: 800;
+  background:
+    var(--brushed-soft),
+    radial-gradient(circle at 50% 25%, #9da1a6, #cfd2d5 75%);
+  text-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.8),
+    0 -1px 1px rgba(0, 0, 0, 0.45);
+  box-shadow:
+    inset 0 5px 10px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(30, 33, 38, 0.6),
+    inset 0 -2px 1px rgba(255, 255, 255, 0.55),
+    0 1px 0 2px rgba(255, 255, 255, 0.8),
+    0 -1px 0 2px rgba(0, 0, 0, 0.22),
+    0 0 0 9px rgba(255, 255, 255, 0.16),
+    0 0 0 10px rgba(30, 33, 38, 0.28),
+    0 1px 0 10px rgba(255, 255, 255, 0.6);
+  animation: stamp 320ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
 }
 
-/* Register panel */
+@keyframes stamp {
+  0% {
+    transform: scale(1.45);
+    opacity: 0;
+    filter: brightness(1.3);
+  }
+  55% {
+    transform: scale(0.96);
+    opacity: 1;
+    filter: brightness(0.92);
+  }
+  100% {
+    transform: scale(1);
+    filter: none;
+  }
+}
+
+.paid h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.paid h2::before {
+  content: '';
+  --lamp: var(--lamp-green);
+  width: 0.85rem;
+  height: 0.85rem;
+  animation: lamp-on 900ms ease-out 180ms both;
+}
+
+@keyframes lamp-on {
+  0% {
+    filter: brightness(0.3) saturate(0.3);
+    box-shadow:
+      0 0 0 2px #5d6166,
+      0 0 0 3px rgba(255, 255, 255, 0.55),
+      0 0 0 0 rgba(47, 224, 127, 0);
+  }
+  35% {
+    filter: brightness(1.5);
+    box-shadow:
+      0 0 0 2px #5d6166,
+      0 0 0 3px rgba(255, 255, 255, 0.55),
+      0 0 34px 12px rgba(47, 224, 127, 0.75);
+  }
+  100% {
+    filter: none;
+    box-shadow:
+      0 0 0 2px #5d6166,
+      0 0 0 3px rgba(255, 255, 255, 0.55),
+      0 0 14px 3px rgba(47, 224, 127, 0.7);
+  }
+}
+
+/* Register panel: an engraved ledger plate. */
 
 .wallet {
   width: min(100%, 30rem);
@@ -394,11 +919,21 @@ summary:focus-visible {
   justify-content: space-between;
 }
 
+.wallet-head h2 {
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  font-size: 1.1rem;
+}
+
 .sync-line {
   display: flex;
   align-items: baseline;
-  gap: 0.5rem;
-  font-size: 0.9rem;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+}
+
+.sync-line .dot {
+  transform: translateY(1px);
 }
 
 .activity {
@@ -407,13 +942,16 @@ summary:focus-visible {
   padding: 0;
 }
 
+/* Each row is ruled off with a scribed line: dark cut, light lip. */
 .activity li {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
   padding: 0.7rem 0;
-  border-bottom: 1px solid var(--line);
+  box-shadow:
+    0 1px 0 var(--edge-dark),
+    0 2px 0 var(--edge-light);
   font-variant-numeric: tabular-nums;
 }
 
@@ -423,14 +961,21 @@ summary:focus-visible {
   min-width: 0;
 }
 
+.activity li > span:last-child {
+  font-family: var(--font-display);
+  font-size: 0.98rem;
+}
+
 .activity strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 700;
 }
 
 .activity small {
   color: var(--muted);
+  font-size: 0.85rem;
 }
 
 .activity .in {
@@ -450,7 +995,15 @@ summary:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+}
+
+.field input {
+  font-family: var(--font-display);
+  font-size: 1.05rem;
 }
 
 .prefixed {
@@ -464,6 +1017,8 @@ summary:focus-visible {
   top: 50%;
   transform: translateY(-50%);
   color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 1.05rem;
 }
 
 .prefixed input {
@@ -473,6 +1028,7 @@ summary:focus-visible {
 .token {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 0.8rem;
+  font-weight: 400;
   word-break: break-all;
   resize: none;
 }
@@ -480,13 +1036,23 @@ summary:focus-visible {
 .wallet .qr {
   width: min(100%, 18rem);
   align-self: center;
+  box-shadow:
+    0 0 0 1px rgba(20, 22, 26, 0.7),
+    0 0 0 8px #a5a9ae,
+    0 0 0 9px rgba(30, 33, 38, 0.65),
+    0 2px 0 9px rgba(255, 255, 255, 0.6);
+  margin: 10px 0;
 }
 
 .words {
   font-family: ui-monospace, Menlo, monospace;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
+  font-weight: 400;
+  background: #eef0f2;
+  border-radius: 8px;
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.35),
+    inset 0 0 0 1px rgba(40, 44, 50, 0.45),
+    0 1px 0 rgba(255, 255, 255, 0.85);
   padding: 0.9rem;
   margin: 0.6rem 0;
   word-spacing: 0.3em;
@@ -494,13 +1060,14 @@ summary:focus-visible {
 
 .mint-url {
   font-family: ui-monospace, Menlo, monospace;
+  font-weight: 400;
   font-size: 0.85rem;
   overflow-wrap: anywhere;
 }
 
 summary {
   cursor: pointer;
-  font-weight: 600;
+  font-weight: 700;
   min-height: 44px;
   display: flex;
   align-items: center;
@@ -513,7 +1080,9 @@ summary {
     display: block;
     position: static;
     flex: 0 0 24rem;
-    border-left: 1px solid var(--line);
+    box-shadow:
+      -1px 0 0 var(--edge-dark),
+      -2px 0 0 var(--edge-light);
   }
 
   .balance {
@@ -525,8 +1094,19 @@ summary {
   }
 }
 
+/* Still light, no drift, no strike: the lamp is fixed by motion.ts as well. */
 @media (prefers-reduced-motion: reduce) {
-  .pulse {
+  .pulse,
+  .check,
+  .paid h2::before {
     animation: none;
+  }
+
+  .btn,
+  .key,
+  .key .face,
+  .key .face::after,
+  .key .legend {
+    transition: none;
   }
 }
