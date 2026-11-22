@@ -7,6 +7,7 @@ import { deriveKeys } from '@/lib/keys';
 import { PasskeyError, register as createPasskey, unlock } from '@/lib/passkey';
 import { Register, browserEnv } from '@/lib/register';
 import type { Cashout, Sale } from '@/lib/state';
+import { setMood } from './fx/liquid';
 import { Qr } from './qr';
 
 const SESSION_KEY = 'beepos:session';
@@ -160,6 +161,12 @@ function Till({ register: reg, onLock }: { register: Register; onLock: () => voi
       document.removeEventListener('visibilitychange', tick);
     };
   }, [register]);
+
+  // The liquid behind the glass breathes while an invoice waits and floods when it is paid.
+  useEffect(() => {
+    setMood(view.name === 'invoice' ? 'waiting' : view.name === 'paid' ? 'paid' : 'idle');
+    return () => setMood('idle');
+  }, [view.name]);
 
   const sale =
     view.name === 'keypad' ? undefined : register.state.sales.find((s) => s.id === view.saleId);
