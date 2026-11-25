@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { deriveKeys } from '@/lib/keys';
+import { approve } from '@/lib/reauth';
 import { Register, type RegisterEnv } from '@/lib/register';
 import { verifyRequest } from '@/lib/vault-auth';
 import { MemoryVaultStore } from '@/lib/vault-store';
@@ -41,7 +42,9 @@ async function untilPaid(register: Register, id: string) {
 
 describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', () => {
   it('sells, syncs to a second device, cashes out, and recovers from the seed alone', async () => {
-    const keys = deriveKeys(crypto.getRandomValues(new Uint8Array(32)));
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const keys = deriveKeys(prf);
+    const passkey = async () => prf;
     const server = new MemoryVaultStore();
 
     const till = await Register.open(keys, MINT, device(server));
@@ -68,13 +71,17 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
     expect(till.balance).toBe(33);
     expect(phone.balance).toBe(33);
 
-    const cashout = await phone.cashOut(5);
+    // Cash out needs a passkey approval, and each approval works once.
+    const approval = await approve(keys, passkey);
+    const cashout = await phone.cashOut(5, approval);
+    await expect(phone.cashOut(5, approval)).rejects.toThrow('Confirm with your passkey');
     expect(cashout.token).toMatch(/^cashuB/);
     expect(cashout.amount).toBe(5);
     // The test mint charges a swap fee; Minibits does not.
     const afterCashout = phone.balance;
     expect(afterCashout).toBeLessThanOrEqual(28);
     expect(afterCashout).toBeGreaterThanOrEqual(26);
+    expect(phone.state.cashouts).toHaveLength(1);
     await phone.flush();
     await till.pull();
     expect(till.balance).toBe(afterCashout);

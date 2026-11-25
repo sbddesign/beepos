@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { formatBitcoin } from '@/lib/format';
 import { deriveKeys } from '@/lib/keys';
+import { PasskeyError } from '@/lib/passkey';
+import { approve, redeem } from '@/lib/reauth';
 import { emptyState, merge, sameState, type RegisterState } from '@/lib/state';
 import { signRequest, verifyRequest } from '@/lib/vault-auth';
 import { open, seal } from '@/lib/vault-crypto';
@@ -36,6 +38,41 @@ describe('keys from the passkey secret', () => {
     expect(Buffer.from(a.vaultKey).toString('hex')).not.toBe(
       Buffer.from(a.authPrivkey).toString('hex'),
     );
+  });
+});
+
+describe('asking for the passkey again', () => {
+  const keys = deriveKeys(prf);
+  const other = new Uint8Array(32).fill(8);
+
+  it('approves the passkey that opened the register, once', async () => {
+    const approval = await approve(keys, async () => prf.slice());
+    expect(() => redeem(approval, keys)).not.toThrow();
+    expect(() => redeem(approval, keys)).toThrow('Confirm with your passkey');
+  });
+
+  it('refuses another passkey even though its prompt succeeded', async () => {
+    const err = await approve(keys, async () => other).catch((e) => e);
+    expect(err).toBeInstanceOf(PasskeyError);
+    expect(err.kind).toBe('wrong-passkey');
+    await expect(approve(keys, async () => new Uint8Array(5))).rejects.toMatchObject({
+      kind: 'wrong-passkey',
+    });
+  });
+
+  it('passes a dismissed prompt through and approves nothing', async () => {
+    const dismissed = new PasskeyError('cancelled', 'Passkey prompt was dismissed.');
+    await expect(
+      approve(keys, async () => {
+        throw dismissed;
+      }),
+    ).rejects.toBe(dismissed);
+  });
+
+  it('refuses a forged approval and one given for another register', async () => {
+    expect(() => redeem({ accountId: keys.accountId }, keys)).toThrow();
+    const theirs = await approve(deriveKeys(other), async () => other);
+    expect(() => redeem(theirs, keys)).toThrow();
   });
 });
 

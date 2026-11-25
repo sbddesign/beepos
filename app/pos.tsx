@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { formatBitcoin, timeAgo } from '@/lib/format';
 import { deriveKeys } from '@/lib/keys';
 import { PasskeyError, register as createPasskey, unlock } from '@/lib/passkey';
+import { approve } from '@/lib/reauth';
 import { Register, browserEnv } from '@/lib/register';
 import type { Cashout, Sale } from '@/lib/state';
 import { setMood } from './fx/liquid';
@@ -496,12 +497,35 @@ function WalletPanel({
 }) {
   const [mode, setMode] = useState<'list' | 'cashout' | 'backup'>('list');
   const [token, setToken] = useState<Cashout | null>(null);
+  const [words, setWords] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     void register.refreshCashouts().catch(() => {});
   }, [register]);
+
+  // One passkey question at a time. Leaving the view (Back, Done, Lock, closing the
+  // drawer) withdraws it: an answer that arrives afterwards shows and moves nothing.
+  // The prompt itself is closed too, where the browser allows it.
+  const asked = useRef(0);
+  const prompt = useRef<AbortController | null>(null);
+  const leave = useCallback(() => {
+    asked.current++;
+    prompt.current?.abort();
+    prompt.current = null;
+  }, []);
+  useEffect(() => leave, [leave]);
+  const confirm = async () => {
+    leave();
+    const mine = asked.current;
+    const open = (prompt.current = new AbortController());
+    const approval = await approve(register.keys, () => unlock(undefined, open.signal));
+    if (mine !== asked.current) {
+      throw new PasskeyError('cancelled', 'Left before the passkey answered.');
+    }
+    return { approval, current: () => mine === asked.current };
+  };
 
   const entries = useMemo<Entry[]>(() => {
     const sales = register.state.sales
@@ -522,7 +546,8 @@ function WalletPanel({
     try {
       setNote((await work()) ?? '');
     } catch (err) {
-      setNote(message(err));
+      // A dismissed passkey prompt changes nothing and needs no message.
+      setNote(err instanceof PasskeyError && err.kind === 'cancelled' ? '' : message(err));
     } finally {
       setBusy(false);
     }
@@ -539,7 +564,14 @@ function WalletPanel({
     <div className="wallet">
       <div className="wallet-head">
         <h2>Register</h2>
-        <button className="btn ghost close" onClick={onClose}>
+        <button
+          className="btn ghost close"
+          onClick={() => {
+            leave();
+            setWords('');
+            onClose();
+          }}
+        >
           Done
         </button>
       </div>
@@ -557,6 +589,7 @@ function WalletPanel({
               className="btn primary"
               disabled={register.balance === 0}
               onClick={() => {
+                leave();
                 setToken(null);
                 setNote('');
                 setMode('cashout');
@@ -564,10 +597,24 @@ function WalletPanel({
             >
               Cash out
             </button>
-            <button className="btn ghost" onClick={() => setMode('backup')}>
+            <button
+              className="btn ghost"
+              onClick={() => {
+                leave();
+                setWords('');
+                setNote('');
+                setMode('backup');
+              }}
+            >
               Backup
             </button>
-            <button className="btn ghost" onClick={onLock}>
+            <button
+              className="btn ghost"
+              onClick={() => {
+                leave();
+                onLock();
+              }}
+            >
               Lock
             </button>
           </div>
@@ -603,12 +650,29 @@ function WalletPanel({
                           Not redeemed yet ·{' '}
                           <button
                             className="link"
-                            onClick={() => {
-                              setToken(entry.cashout);
-                              setMode('cashout');
-                            }}
+                            disabled={busy}
+                            onClick={() =>
+                              act(async () => {
+                                const { approval } = await confirm();
+                                setToken(register.cashoutToken(entry.cashout.id, approval));
+                                setMode('cashout');
+                              })
+                            }
                           >
                             Show token
+                          </button>
+                          {' · '}
+                          <button
+                            className="link"
+                            disabled={busy}
+                            onClick={() =>
+                              act(async () => {
+                                await register.reclaim(entry.cashout.id);
+                                return 'Token taken back into the register.';
+                              })
+                            }
+                          >
+                            Take it back
                           </button>
                         </>
                       )}
@@ -642,7 +706,10 @@ function WalletPanel({
           note={note}
           onToken={(amount) =>
             act(async () => {
-              setToken(await register.cashOut(amount));
+              const { approval, current } = await confirm();
+              const made = await register.cashOut(amount, approval);
+              // Made after leaving: it stays in Activity, where showing it asks again.
+              if (current()) setToken(made);
             })
           }
           onReclaim={(id) =>
@@ -653,6 +720,8 @@ function WalletPanel({
             })
           }
           onBack={() => {
+            leave();
+            setToken(null);
             setNote('');
             setMode('list');
           }}
@@ -668,13 +737,24 @@ function WalletPanel({
             restore, using this mint:
           </p>
           <p className="mint-url">{register.state.mintUrl}</p>
-          <details>
-            <summary>Show the 12 words</summary>
-            <p className="words" data-testid="words">
-              {register.keys.mnemonic}
-            </p>
-            <p className="muted">Anyone with these words can take the money. Keep them offline.</p>
-          </details>
+          {words ? (
+            <>
+              <p className="words" data-testid="words">
+                {words}
+              </p>
+              <p className="muted">Anyone with these words can take the money. Keep them offline.</p>
+            </>
+          ) : (
+            <button
+              className="btn ghost"
+              disabled={busy}
+              onClick={() =>
+                act(async () => setWords(register.backupWords((await confirm()).approval)))
+              }
+            >
+              Show the 12 words
+            </button>
+          )}
           <button
             className="btn ghost"
             disabled={busy}
@@ -692,6 +772,8 @@ function WalletPanel({
           <button
             className="btn ghost"
             onClick={() => {
+              leave();
+              setWords('');
               setNote('');
               setMode('list');
             }}

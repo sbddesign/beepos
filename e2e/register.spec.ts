@@ -64,7 +64,7 @@ test('create a passkey, take a payment, and open the register on a second device
   page,
 }, testInfo) => {
   const shot = (name: string) => page.screenshot({ path: testInfo.outputPath(`${name}.png`) });
-  await addAuthenticator(context, page);
+  const { cdp, authenticatorId } = await addAuthenticator(context, page);
   page.on('requestfinished', (r) => {
     const t = r.timing();
     if (t.responseEnd > 4000) slow.push(`${Math.round(t.responseEnd)}ms ${r.method()} ${r.url()}`);
@@ -139,22 +139,98 @@ test('create a passkey, take a payment, and open the register on a second device
   await expect(page.getByTestId('wallet-balance')).toHaveText('₿2,100', { timeout: OPEN });
   await expect(page.getByText('Flat white')).toBeVisible();
 
-  // Cash out to a token.
+  // Cash out to a token. The passkey is asked for again and answers.
   await page.getByRole('button', { name: 'Cash out' }).click();
   await page.getByLabel('Amount to cash out').fill('100');
   await page.getByRole('button', { name: 'Make ₿100 token' }).click();
   await expect(page.getByTestId('token')).toHaveValue(/^cashuB/, { timeout: OPEN });
   await shot('6-token');
-  const left = Number((await page.getByTestId('wallet-balance').innerText()).replace(/\D/g, ''));
+  const balance = page.getByTestId('wallet-balance');
+  const left = Number((await balance.innerText()).replace(/\D/g, ''));
   expect(left).toBeLessThanOrEqual(2000);
   expect(left).toBeGreaterThanOrEqual(1990); // the test mint takes a small swap fee
   await page.getByRole('button', { name: 'Done' }).last().click();
   await expect(page.getByText('Not redeemed yet')).toBeVisible();
 
-  // The backup screen offers the 12 words.
+  // The token is still money, so seeing it again takes the passkey too.
+  const showToken = page.getByRole('button', { name: 'Show token' });
+  await showToken.click();
+  await expect(page.getByTestId('token')).toHaveValue(/^cashuB/);
+  await page.getByRole('button', { name: 'Done' }).last().click();
+
+  // The backup screen shows the 12 words after the passkey, and hides them again on leaving.
+  const showWords = page.getByRole('button', { name: 'Show the 12 words' });
+  const back = page.getByRole('button', { name: 'Back', exact: true });
   await page.getByRole('button', { name: 'Backup' }).click();
-  await page.getByText('Show the 12 words').click();
+  await expect(page.getByTestId('words')).toHaveCount(0);
+  await showWords.click();
   expect((await page.getByTestId('words').innerText()).trim().split(/\s+/)).toHaveLength(12);
+  await back.click();
+
+  // Leaving while the passkey prompt is still open withdraws the question: the
+  // prompt is closed, and an answer that arrives later shows and moves nothing.
+  const presence = (enabled: boolean) =>
+    cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled });
+  const backup = page.getByRole('button', { name: 'Backup' });
+  await presence(false);
+  // Back out of Backup.
+  await backup.click();
+  await showWords.click();
+  await expect(showWords).toBeDisabled();
+  await back.click();
+  await backup.click();
+  await expect(showWords).toBeEnabled();
+  await expect(page.getByTestId('words')).toHaveCount(0);
+  // Close the drawer.
+  await showWords.click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await openRegister(page);
+  await backup.click();
+  await expect(showWords).toBeEnabled();
+  await expect(page.getByTestId('words')).toHaveCount(0);
+  await back.click();
+  // Move from a pending "Show token" to another view.
+  await showToken.click();
+  await backup.click();
+  await expect(showWords).toBeEnabled();
+  await expect(page.getByTestId('token')).toHaveCount(0);
+  await back.click();
+  // Back out of a pending cash out: no token is made.
+  await page.getByRole('button', { name: 'Cash out' }).click();
+  await page.getByRole('button', { name: /^Make ₿[\d,]+ token$/ }).click();
+  await back.click();
+  await expect(page.getByText('Not redeemed yet')).toHaveCount(1);
+  await expect(balance).toHaveText(`₿${left.toLocaleString('en-US')}`);
+  await presence(true);
+  await expect(page.getByTestId('token')).toHaveCount(0);
+  await expect(page.getByTestId('words')).toHaveCount(0);
+
+  // A stranger at the unlocked terminal: the prompt appears and they cannot pass it.
+  // (Last in the test: the virtual passkey refuses everything after one failed check.)
+  await cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: false });
+  await showToken.click();
+  await expect(showToken).toBeEnabled({ timeout: OPEN });
+  await expect(page.getByTestId('token')).toHaveCount(0);
+
+  await page.getByRole('button', { name: 'Backup' }).click();
+  await showWords.click();
+  await expect(showWords).toBeEnabled({ timeout: OPEN });
+  await expect(page.getByTestId('words')).toHaveCount(0);
+  await back.click();
+
+  await page.getByRole('button', { name: 'Cash out' }).click();
+  const make = page.getByRole('button', { name: /^Make ₿[\d,]+ token$/ });
+  await make.click();
+  await expect(make).toBeEnabled({ timeout: OPEN });
+  await expect(page.getByTestId('token')).toHaveCount(0);
+  await expect(balance).toHaveText(`₿${left.toLocaleString('en-US')}`);
+  await back.click();
+
+  // Taking a token back is safe and asks for nothing.
+  await page.getByRole('button', { name: 'Take it back' }).click();
+  await expect(page.getByText('Token taken back into the register.')).toBeVisible({ timeout: OPEN });
+  await expect(balance).not.toHaveText(`₿${left.toLocaleString('en-US')}`);
 });
 
 test('a passkey provider without PRF gets a clear message', async ({ context, page }) => {
