@@ -26,6 +26,25 @@ export type Sale = {
   expiry: number | null;
   status: SaleStatus;
   paidAt?: number;
+  /** Set when the sale was rung up in fiat: what was typed and the price used. */
+  fiat?: SaleFiat;
+};
+
+export type SaleFiat = {
+  /** ISO 4217 code. */
+  currency: string;
+  /** In the currency's smallest unit (cents for USD). */
+  amount: number;
+  /** Price of one whole bitcoin in that currency when the invoice was made. */
+  perBitcoin: number;
+};
+
+/** Per-register settings. They follow the passkey to every device. */
+export type Settings = {
+  /** Currency the keypad takes, or null for bitcoin only. */
+  fiat: string | null;
+  /** When it was last changed; the later change wins a merge. */
+  at: number;
 };
 
 export type CashoutStatus = 'out' | 'claimed' | 'reclaimed';
@@ -77,6 +96,8 @@ export type RegisterState = {
   sales: Sale[];
   cashouts: Cashout[];
   payouts: Payout[];
+  /** Absent until the owner changes a setting; the defaults apply. */
+  settings?: Settings;
 };
 
 const MAX_SPENT = 5000;
@@ -132,9 +153,13 @@ export function merge(a: RegisterState, b: RegisterState): RegisterState {
   for (const [id, n] of Object.entries(b.counters)) {
     counters[id] = Math.max(counters[id] ?? 0, n);
   }
+  const settings = [a.settings, b.settings]
+    .filter((s): s is Settings => !!s)
+    .sort((x, y) => y.at - x.at || (String(x.fiat) < String(y.fiat) ? -1 : 1))[0];
   return {
     v: 1,
     mintUrl: a.mintUrl,
+    ...(settings ? { settings } : {}),
     counters,
     proofs: [...proofs.values()].sort((x, y) => (x.secret < y.secret ? -1 : 1)),
     spent: spent.sort(),

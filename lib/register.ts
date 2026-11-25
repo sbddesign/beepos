@@ -9,6 +9,7 @@ import {
 } from '@cashu/cashu-ts';
 import type { Destination } from './destination';
 import { lnurlInvoice } from './lnurl';
+import { DEFAULT_CURRENCY, isCurrency, type Currency } from './fiat';
 import type { RegisterKeys } from './keys';
 import { redeem, type Approval } from './reauth';
 import {
@@ -20,6 +21,7 @@ import {
   sameState,
   type Cashout,
   type Payout,
+  type SaleFiat,
   type RegisterState,
   type Sale,
   type StoredProof,
@@ -245,10 +247,23 @@ export class Register {
     }
   }
 
+  // ---- settings ---------------------------------------------------------
+
+  /** Currency the keypad takes: a code from ./fiat, or null for bitcoin only. Default USD. */
+  get fiat(): Currency | null {
+    const set = this.state.settings;
+    if (!set) return DEFAULT_CURRENCY;
+    return isCurrency(set.fiat) ? set.fiat : null;
+  }
+
+  setFiat(fiat: Currency | null) {
+    this.commit((s) => ({ ...s, settings: { fiat, at: Date.now() } }));
+  }
+
   // ---- sales ------------------------------------------------------------
 
   /** Creates a Lightning invoice for `amount`. The quote is locked to this register (NUT-20). */
-  async charge(amount: number, memo: string): Promise<Sale> {
+  async charge(amount: number, memo: string, fiat?: SaleFiat): Promise<Sale> {
     const description = memo.trim() || undefined;
     let quote;
     try {
@@ -266,6 +281,7 @@ export class Register {
       createdAt: Date.now(),
       expiry: quote.expiry,
       status: 'pending',
+      ...(fiat ? { fiat } : {}),
     };
     this.commit((s) => ({ ...s, sales: [...s.sales, sale] }));
     return sale;

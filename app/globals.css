@@ -747,8 +747,38 @@ summary {
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.setting dt {
+.setting dt,
+.setting label {
   font-weight: 600;
+}
+
+.setting select {
+  min-height: 44px;
+  max-width: 62%;
+  padding: 0.4rem 0.7rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: rgba(var(--ink), 0.62);
+  color: inherit;
+  font: inherit;
+}
+
+.setting-note {
+  margin: 0.5rem 0 0.2rem;
+  font-size: 0.9rem;
+}
+
+/* The converted amount is small text over open liquid, so it brings its own glass. */
+.convert {
+  align-self: center;
+  margin: 0;
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(var(--ink), 0.72);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
 }
 
 .setting dd {

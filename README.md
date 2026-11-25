@@ -40,6 +40,7 @@ The register receives to one mint, chosen for you: [Minibits](https://mint.minib
 - A Lightning address is looked up straight from the browser, so the address's host sees your IP address and the amount, and beepos's server sees nothing. Hosts that do not allow browser requests cannot be paid by address; paste an invoice from them instead.
 - BOLT12 offers are paid only on a mint that supports them. Minibits does not yet.
 - Cash out, showing a cash-out token again, and showing the 12 words each ask for the passkey again, and only the passkey that opened the register passes. This stops someone tapping buttons on an unlocked terminal. It does not stop someone who can run code in the tab (developer tools, a malicious extension): the keys are in memory while the register is open. **Lock** it when you step away.
+- With a currency set (US dollars by default; change it or turn it off in Settings), the keypad takes that currency and the invoice is for the bitcoin it is worth at that moment. The price comes from Coinbase's public API, or Blockchain.com's if that fails, straight from the browser: the same request for everyone, with nothing about the register in it. It is refreshed every minute. A price more than 10 minutes old is not used; the keypad takes bitcoin until a new one arrives. A sale keeps the fiat amount and the price used.
 - The vault API has no rate limit yet.
 
 ## Run it
@@ -71,8 +72,9 @@ npm run e2e              # the whole app in Chromium with a virtual passkey
 | --- | --- |
 | `lib/passkey.ts` | WebAuthn create and get with PRF |
 | `lib/keys.ts` | Seed, vault key, auth key and quote key from the PRF secret |
-| `lib/register.ts` | Sales, minting, cash out, recovery, sync |
+| `lib/register.ts` | Sales, minting, cash out, recovery, sync, settings |
 | `lib/destination.ts`, `lib/lnurl.ts` | Reading an invoice, offer or Lightning address; getting an invoice from an address |
+| `lib/fiat.ts` | Currencies, the bitcoin price and converting a fiat amount |
 | `lib/state.ts` | The state blob and how two devices' copies merge |
 | `lib/vault-*.ts`, `app/api/vault` | Encrypted blob storage with signed requests |
 | `app/pos.tsx` | The screens |

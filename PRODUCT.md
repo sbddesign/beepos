@@ -24,7 +24,7 @@ Today the real users are the owner of this repository and one or two friends who
 | **Money in** | Lightning invoices, one per sale. |
 | **Money held** | Cashu ecash at one mint, chosen for the owner (Minibits by default). |
 | **Money out** | Cash out by paying a Lightning invoice or Lightning address, or to a Cashu token. BOLT12 offers work on mints that support them (Minibits does not yet). |
-| **Amounts** | [BIP-177](https://github.com/bitcoin/bips/blob/master/bip-0177.mediawiki): whole bitcoin with the ₿ sign. ₿2,100 is what used to be called 2,100 sats. Entering amounts in a fiat currency, with the ₿ amount shown beside it, is planned (#8). |
+| **Amounts** | [BIP-177](https://github.com/bitcoin/bips/blob/master/bip-0177.mediawiki): whole bitcoin with the ₿ sign. ₿2,100 is what used to be called 2,100 sats. The keypad can take a fiat currency instead (US dollars by default, set per register in Settings, or off); it shows the ₿ amount beside it and the invoice is always for the ₿ amount. |
 | **Backup** | Automatic. The register is encrypted in the browser and stored as one blob the server cannot read. A 12-word seed is there as a last resort. |
 
 ## Principles
