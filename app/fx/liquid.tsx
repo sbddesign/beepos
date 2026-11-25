@@ -142,7 +142,7 @@ export function Liquid() {
       run();
     };
     const onPress = (e: PointerEvent) => {
-      const el = (e.target as Element | null)?.closest?.('.key, .btn');
+      const el = (e.target as Element | null)?.closest?.('.key, .btn, .tile');
       if (!el || (el as HTMLButtonElement).disabled) return;
       if (!reduced.matches) ripple(el);
       if (el.classList.contains('key')) navigator.vibrate?.(8);

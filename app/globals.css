@@ -617,7 +617,122 @@ summary:focus-visible {
 .wallet-head {
   display: flex;
   align-items: center;
+  gap: 0.6rem;
+}
+
+.wallet-head h2 {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn.back {
+  width: 48px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+}
+
+.icon {
+  display: block;
+  flex: none;
+}
+
+/*
+ * The register menu: big clear-glass tiles a busy hand can hit. Two across; Cash
+ * out is the one amber tile, and Lock runs the full width underneath.
+ */
+.tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.tile {
+  min-height: 6.25rem;
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
   justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(120% 90% at var(--spec-x) var(--spec-y), rgba(255, 255, 255, 0.14), transparent 60%),
+    rgba(255, 255, 255, 0.04);
+  box-shadow: var(--bevel);
+  font-size: 1.05rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    transform 0.09s ease-out,
+    box-shadow 0.09s ease-out;
+}
+
+.tile .icon {
+  width: 28px;
+  height: 28px;
+}
+
+.tile.wide {
+  grid-column: 1 / -1;
+  min-height: 60px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.tile.primary {
+  background:
+    radial-gradient(120% 90% at var(--spec-x) var(--spec-y), rgba(255, 255, 255, 0.55), transparent 55%),
+    linear-gradient(180deg, rgba(255, 216, 96, 0.96), rgba(245, 183, 0, 0.9) 55%, rgba(206, 146, 0, 0.92));
+  border-color: rgba(255, 232, 150, 0.7);
+  color: var(--accent-ink);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    inset 0 -2px 0 rgba(120, 78, 0, 0.45),
+    0 10px 28px -10px rgba(245, 183, 0, 0.6);
+}
+
+.tile:active:not(:disabled) {
+  transform: translateY(2px) scale(0.99);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.tile:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.tile:focus-visible,
+.setting-link:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* A settings row that opens another view. */
+.setting-link {
+  width: 100%;
+  min-height: 56px;
+  align-items: center;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: left;
+  cursor: pointer;
+}
+
+.setting-link .muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.setting-link .icon {
+  width: 18px;
+  height: 18px;
 }
 
 .sync-line {
@@ -733,9 +848,6 @@ summary {
   align-items: center;
 }
 
-.settings {
-  margin-top: 0.75rem;
-}
 
 .setting {
   display: flex;
@@ -849,13 +961,14 @@ summary {
 /* Saved items in Settings */
 
 .saved {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  padding-bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
-.saved > .setting {
-  border-bottom: 0;
-  padding-bottom: 0.2rem;
+.saved-list li {
+  min-height: 52px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .saved .link {
@@ -916,6 +1029,7 @@ summary {
 
   .btn,
   .key,
+  .tile,
   .till-btn {
     transition: none;
   }
