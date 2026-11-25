@@ -218,6 +218,51 @@ summary:focus-visible {
   padding: 1.5rem 1rem;
 }
 
+/*
+ * While the video plays (html[data-watching], set by app/about/video.tsx) an ink
+ * veil covers the liquid, or the still gradient when there is no WebGL, and
+ * everything on the card but the video steps back.
+ */
+.about::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: rgb(var(--ink));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.9s ease;
+}
+
+[data-watching] .about::before {
+  opacity: 0.86;
+}
+
+.about-card,
+.about-card > :not(video) {
+  transition:
+    opacity 0.9s ease,
+    border-color 0.9s ease;
+}
+
+[data-watching] .about-card {
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+[data-watching] .about-card > :not(video) {
+  opacity: 0.4;
+}
+
+/* The way in stays easy to find and to use. */
+[data-watching] .about-card > .about-go {
+  opacity: 0.75;
+}
+
+[data-watching] .about-card > .about-go:hover,
+[data-watching] .about-card > .about-go:focus-visible {
+  opacity: 1;
+}
+
 .about-card {
   width: min(100%, 46rem);
   display: flex;
@@ -1118,7 +1163,10 @@ summary {
   .btn,
   .key,
   .tile,
-  .till-btn {
+  .till-btn,
+  .about::before,
+  .about-card,
+  .about-card > :not(video) {
     transition: none;
   }
 }

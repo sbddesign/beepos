@@ -583,3 +583,52 @@ test('the home screen links to the about page, and Get started comes back', asyn
   await expect(page.getByRole('button', { name: 'Create a passkey' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('home.png') });
 });
+
+test('the about page goes dark while the video plays and comes back when it stops', async ({ page }, testInfo) => {
+  await page.goto('/about');
+  const html = page.locator('html');
+  const video = page.locator('video');
+  const veil = () =>
+    page.evaluate(() => Number(getComputedStyle(document.querySelector('.about')!, '::before').opacity));
+  const heading = page.getByRole('heading', { name: 'The cash register from the future.' });
+  await expect(html).not.toHaveAttribute('data-watching');
+  expect(await veil()).toBe(0);
+  await page.screenshot({ path: testInfo.outputPath('about-idle.png') });
+
+  // Muted so the browser lets a script start it; a visitor uses the controls.
+  await video.evaluate((v: HTMLVideoElement) => {
+    v.muted = true;
+    v.loop = true;
+    return v.play();
+  });
+  await expect(html).toHaveAttribute('data-watching', '');
+  await expect.poll(veil).toBeGreaterThan(0.8);
+  await expect(heading).toHaveCSS('opacity', '0.4');
+  await expect(video).toHaveCSS('opacity', '1');
+  await expect(page.getByRole('link', { name: 'Get started' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('about-playing.png') });
+
+  await video.evaluate((v: HTMLVideoElement) => v.pause());
+  await expect(html).not.toHaveAttribute('data-watching');
+  await expect.poll(veil).toBe(0);
+  await expect(heading).toHaveCSS('opacity', '1');
+
+  // Reaching the end counts as stopping, and leaving the page clears it.
+  await video.evaluate((v: HTMLVideoElement) => {
+    v.loop = false;
+    return v.play();
+  });
+  await expect(html).toHaveAttribute('data-watching', '');
+  await video.evaluate((v: HTMLVideoElement) => {
+    v.currentTime = v.duration;
+  });
+  await expect(html).not.toHaveAttribute('data-watching');
+  await video.evaluate((v: HTMLVideoElement) => {
+    v.currentTime = 0;
+    return v.play();
+  });
+  await expect(html).toHaveAttribute('data-watching', '');
+  await page.getByRole('link', { name: 'Get started' }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(html).not.toHaveAttribute('data-watching');
+});
