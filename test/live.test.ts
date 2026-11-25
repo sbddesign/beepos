@@ -4,6 +4,7 @@ import { deriveKeys } from '@/lib/keys';
 import { approve } from '@/lib/reauth';
 import { Register, type RegisterEnv } from '@/lib/register';
 import { verifyRequest } from '@/lib/vault-auth';
+import { balance, merge } from '@/lib/state';
 import { MemoryVaultStore } from '@/lib/vault-store';
 
 // Talks to a real test mint (fake Lightning: invoices pay themselves).
@@ -265,5 +266,35 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
     expect(phone.balance).toBe(till.balance);
     const fresh = await Register.open(keys, MINT, device(null));
     expect(await fresh.recover()).toBe(till.balance);
+  }, 240_000);
+
+  it('an unredeemed cash-out token is not counted again after recovery or sync (#17)', async () => {
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const keys = deriveKeys(prf);
+    const server = new MemoryVaultStore();
+    const till = await Register.open(keys, MINT, device(server));
+    await untilPaid(till, (await till.charge(64, '')).id);
+    const stale = JSON.parse(JSON.stringify(till.state));
+    const cashout = await till.cashOut(20, await approve(keys, async () => prf));
+    expect(cashout.status).toBe('out');
+    const after = till.balance;
+    expect(after).toBeLessThanOrEqual(44);
+    await till.flush();
+
+    // Recover from the mint on the device that made the token.
+    expect(await till.recover()).toBe(after);
+    // A second device that opens from the vault, then recovers.
+    const phone = await Register.open(keys, MINT, device(server));
+    expect(phone.balance).toBe(after);
+    expect(await phone.recover()).toBe(after);
+    await phone.pull();
+    expect(phone.balance).toBe(after);
+    // A copy of the state from before the cash-out, merged back in.
+    expect(balance(merge(till.state, stale))).toBe(after);
+    expect(balance(merge(stale, till.state))).toBe(after);
+
+    // Taking it back still works.
+    await phone.reclaim(cashout.id);
+    expect(phone.balance).toBeGreaterThanOrEqual(after + 18);
   }, 240_000);
 });
