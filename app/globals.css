@@ -175,7 +175,7 @@ textarea {
 
 .btn:focus-visible,
 .key:focus-visible,
-.balance:focus-visible,
+.till-btn:focus-visible,
 .link:focus-visible,
 input:focus-visible,
 textarea:focus-visible,
@@ -272,21 +272,32 @@ summary:focus-visible {
   font-size: 1.15rem;
 }
 
-.balance {
+.till-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.55rem;
   min-height: 44px;
-  padding: 0 0.9rem;
+  padding: 0 0.85rem;
   border-radius: 999px;
   border: 1px solid var(--line);
   background:
     radial-gradient(120% 100% at var(--spec-x) var(--spec-y), rgba(255, 255, 255, 0.2), transparent 60%),
     rgba(255, 255, 255, 0.05);
   box-shadow: var(--bevel);
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
   cursor: pointer;
+  touch-action: manipulation;
+  transition:
+    transform 0.09s ease-out,
+    box-shadow 0.09s ease-out;
+}
+
+.till-btn:active {
+  transform: translateY(2px) scale(0.99);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+.till-btn svg {
+  display: block;
 }
 
 .dot {
@@ -309,34 +320,55 @@ summary:focus-visible {
   box-shadow: 0 0 8px rgba(245, 183, 0, 0.8);
 }
 
-.panes {
+.pane {
   flex: 1;
   min-height: 0;
-  display: flex;
-  position: relative;
-}
-
-.pane.main {
-  flex: 1;
-  min-width: 0;
   display: flex;
   justify-content: center;
   overflow-y: auto;
 }
 
-.pane.side {
-  display: none;
-  position: absolute;
-  inset: 0;
+/*
+ * The register drawer. Closed, it is not in the page at all. Open, it is a sheet
+ * of deep frost that slides in from the right: the whole screen on a phone, a
+ * 26rem column on anything wider, with the till dimmed beside it.
+ */
+.drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(100%, 26rem);
+  height: 100dvh;
+  max-width: none;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-left: 1px solid var(--line);
+  color: inherit;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 30%), rgba(var(--ink), 0.7);
   -webkit-backdrop-filter: blur(30px) saturate(1.25);
   backdrop-filter: blur(30px) saturate(1.25);
+  box-shadow: -30px 0 60px -20px rgba(0, 0, 0, 0.6);
   overflow-y: auto;
-  z-index: 2;
+  overscroll-behavior: contain;
+  animation: drawer-in 0.24s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-.pane.side.open {
-  display: block;
+.drawer::backdrop {
+  background: rgba(var(--ink), 0.5);
+  animation: scrim-in 0.24s ease-out;
+}
+
+@keyframes drawer-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
 }
 
 /* Keypad */
@@ -345,6 +377,9 @@ summary:focus-visible {
   width: min(100%, 26rem);
   height: 100%;
   min-height: 30rem;
+  /* On a tall screen the keypad stays one block in the middle instead of stretching. */
+  max-height: 46rem;
+  margin-block: auto;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
@@ -567,9 +602,9 @@ summary:focus-visible {
 /* Register panel */
 
 .wallet {
-  width: min(100%, 30rem);
-  margin: 0 auto;
-  padding: 1rem;
+  min-height: 100%;
+  padding: calc(1rem + env(safe-area-inset-top)) calc(1rem + env(safe-area-inset-right))
+    calc(1rem + env(safe-area-inset-bottom)) 1rem;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
@@ -698,33 +733,41 @@ summary {
   align-items: center;
 }
 
-/* Tablets and desktops: the register sits beside the keypad. */
+.settings {
+  margin-top: 0.75rem;
+}
 
-@media (min-width: 900px) {
-  .pane.side {
-    display: block;
-    position: static;
-    flex: 0 0 24rem;
-    border-left: 1px solid var(--line);
-  }
+.setting {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+  margin: 0;
+  padding: 0.7rem 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
 
-  .balance {
-    pointer-events: none;
-  }
+.setting dt {
+  font-weight: 600;
+}
 
-  .close {
-    display: none;
-  }
+.setting dd {
+  margin: 0;
+  color: var(--muted);
+  text-align: right;
 }
 
 @media (prefers-reduced-motion: reduce) {
   .pulse,
-  .check {
+  .check,
+  .drawer,
+  .drawer::backdrop {
     animation: none;
   }
 
   .btn,
-  .key {
+  .key,
+  .till-btn {
     transition: none;
   }
 }

@@ -20,7 +20,7 @@ Today the real users are the owner of this repository and one or two friends who
 
 | | |
 | --- | --- |
-| **One credential** | A passkey. No email, no password, no account form. The passkey's secret becomes the wallet seed, so the passkey alone restores the money on any device it syncs to. |
+| **One credential** | A passkey. No email, no password, no account form. The passkey's secret becomes the wallet seed, so the passkey alone restores the money on any device it syncs to, as long as the browser and the passkey provider there both support the WebAuthn PRF extension. Syncing the passkey is not enough by itself; without PRF the register cannot be opened and the 12 words are the way back. |
 | **Money in** | Lightning invoices, one per sale. |
 | **Money held** | Cashu ecash at one mint, chosen for the owner (Minibits by default). |
 | **Money out** | Cash out to a Cashu token. Paying a Lightning invoice, Lightning address or BOLT12 offer is planned (#7). |

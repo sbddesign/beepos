@@ -149,7 +149,8 @@ export function Liquid() {
     };
     const onKey = (e: KeyboardEvent) => {
       if (reduced.matches || e.metaKey || e.ctrlKey || e.altKey) return;
-      if ((e.target as Element | null)?.tagName === 'INPUT') return;
+      const target = e.target as Element | null;
+      if (target?.tagName === 'INPUT' || target?.closest?.('dialog')) return;
       const label = /^\d$/.test(e.key) ? e.key : e.key === 'Backspace' ? 'Delete last digit' : '';
       const el = label && document.querySelector(`.key[aria-label="${label}"]`);
       if (el) ripple(el);

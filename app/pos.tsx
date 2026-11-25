@@ -145,7 +145,13 @@ type View = { name: 'keypad' } | { name: 'invoice'; saleId: string } | { name: '
 function Till({ register: reg, onLock }: { register: Register; onLock: () => void }) {
   const register = useRegister(reg);
   const [view, setView] = useState<View>({ name: 'keypad' });
-  const [walletOpen, setWalletOpen] = useState(false);
+  // The drawer total is private: it is only in the page while the owner has the drawer open.
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
+  const closeDrawer = useCallback(() => {
+    setDrawerOpen(false);
+    opener.current?.focus();
+  }, []);
 
   // Keep in step with other devices and settle invoices paid while nobody was looking.
   useEffect(() => {
@@ -176,39 +182,91 @@ function Till({ register: reg, onLock }: { register: Register; onLock: () => voi
       <header className="bar">
         <span className="brand">beepos</span>
         <button
-          className="balance"
-          onClick={() => setWalletOpen(true)}
-          aria-label={`Register holds ${formatBitcoin(register.balance)}. Open the register.`}
+          ref={opener}
+          className="till-btn"
+          onClick={() => setDrawerOpen(true)}
+          aria-label="Open the register"
+          aria-haspopup="dialog"
         >
           <SyncDot status={register.sync} />
-          <span data-testid="balance">{formatBitcoin(register.balance)}</span>
+          <RegisterIcon />
         </button>
       </header>
-      <div className="panes">
-        <main className="pane main">
-          {view.name === 'keypad' && (
-            <Keypad
-              register={register}
-              onCharged={(s) => setView({ name: 'invoice', saleId: s.id })}
-            />
-          )}
-          {view.name === 'invoice' && sale && (
-            <Invoice
-              register={register}
-              sale={sale}
-              onPaid={() => setView({ name: 'paid', saleId: sale.id })}
-              onCancel={() => setView({ name: 'keypad' })}
-            />
-          )}
-          {view.name === 'paid' && sale && (
-            <Paid sale={sale} onDone={() => setView({ name: 'keypad' })} />
-          )}
-        </main>
-        <aside className={`pane side${walletOpen ? ' open' : ''}`}>
-          <WalletPanel register={register} onClose={() => setWalletOpen(false)} onLock={onLock} />
-        </aside>
-      </div>
+      <main className="pane">
+        {view.name === 'keypad' && (
+          <Keypad
+            register={register}
+            onCharged={(s) => {
+              setDrawerOpen(false);
+              setView({ name: 'invoice', saleId: s.id });
+            }}
+          />
+        )}
+        {view.name === 'invoice' && sale && (
+          <Invoice
+            register={register}
+            sale={sale}
+            onPaid={() => setView({ name: 'paid', saleId: sale.id })}
+            onCancel={() => setView({ name: 'keypad' })}
+          />
+        )}
+        {view.name === 'paid' && sale && (
+          <Paid sale={sale} onDone={() => setView({ name: 'keypad' })} />
+        )}
+      </main>
+      {drawerOpen && (
+        <Drawer onClose={closeDrawer}>
+          <WalletPanel register={register} onClose={closeDrawer} onLock={onLock} />
+        </Drawer>
+      )}
     </div>
+  );
+}
+
+/** A till with its drawer: says "register" without saying how much is in it. */
+function RegisterIcon() {
+  return (
+    <svg
+      width="22"
+      height="22"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <rect x="7" y="3.5" width="10" height="5" rx="1.5" />
+      <path d="M5.5 8.5h13l1.5 6.5H4z" />
+      <rect x="3" y="15" width="18" height="5.5" rx="1.5" />
+      <path d="M10 17.75h4" />
+    </svg>
+  );
+}
+
+/**
+ * The register slides in from the right over everything else. A modal dialog, so
+ * the keypad behind it cannot be pressed, Escape closes it, and it leaves the
+ * page (taking the total with it) the moment it closes.
+ */
+function Drawer({ onClose, children }: { onClose: () => void; children: React.ReactNode }) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+  return (
+    <dialog
+      ref={ref}
+      className="drawer"
+      aria-label="Register"
+      onClose={onClose}
+      // A tap on the dimmed page beside the drawer lands on the dialog itself.
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      {children}
+    </dialog>
   );
 }
 
@@ -266,6 +324,8 @@ function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sa
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      // Typing in the open register must not ring up a sale behind it.
+      if ((e.target as Element | null)?.closest?.('dialog')) return;
       const tag = (e.target as HTMLElement | null)?.tagName;
       const inField = tag === 'INPUT';
       if (e.key === 'Enter' && tag !== 'BUTTON') {
@@ -563,6 +623,14 @@ function WalletPanel({
               ),
             )}
           </ul>
+          {/* Fiat currency (#8) and saved items (#9) go in this section. */}
+          <section className="settings" aria-labelledby="settings-title">
+            <h3 id="settings-title">Settings</h3>
+            <dl className="setting">
+              <dt>Mint</dt>
+              <dd className="mint-url">{register.state.mintUrl.replace(/^https?:\/\//, '')}</dd>
+            </dl>
+          </section>
         </>
       )}
 
