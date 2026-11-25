@@ -25,6 +25,7 @@ Today the real users are the owner of this repository and one or two friends who
 | **Money held** | Cashu ecash at one mint, chosen for the owner (Minibits by default). |
 | **Money out** | Cash out by paying a Lightning invoice or Lightning address, or to a Cashu token. BOLT12 offers work on mints that support them (Minibits does not yet). |
 | **Amounts** | [BIP-177](https://github.com/bitcoin/bips/blob/master/bip-0177.mediawiki): whole bitcoin with the ₿ sign. ₿2,100 is what used to be called 2,100 sats. The keypad can take a fiat currency instead (US dollars by default, set per register in Settings, or off); it shows the ₿ amount beside it and the invoice is always for the ₿ amount. |
+| **Saved items** | Up to 12 things the owner charges for often, each with a name and a price in the register's currency or in bitcoin. One tap on the keypad fills the amount and the memo; the owner still presses Charge. |
 | **Backup** | Automatic. The register is encrypted in the browser and stored as one blob the server cannot read. A 12-word seed is there as a last resort. |
 
 ## Principles
@@ -40,7 +41,7 @@ Today the real users are the owner of this repository and one or two friends who
 
 - **Not a wallet.** There is no send screen, no contacts and no general balance management. Money comes in through sales and leaves through cash out.
 - **Not a place to keep savings.** Ecash is custodial: the mint holds the bitcoin. The register is a cash drawer, meant to be emptied regularly.
-- **No inventory, tax, receipts, staff accounts or reporting.** Saved memo presets (#9) are as far as "products" go.
+- **No inventory, tax, receipts, staff accounts or reporting.** Saved items (a name and a price) are as far as "products" go.
 - **No multiple mints, no mint picker.** One mint, set by the deployment.
 - **No on-chain payments** and no card payments.
 - **No customer accounts and no customer data.** The only thing recorded about a sale is its amount, time and the memo the owner typed.

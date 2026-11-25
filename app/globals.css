@@ -748,11 +748,13 @@ summary {
 }
 
 .setting dt,
+.setting-label,
 .setting label {
   font-weight: 600;
 }
 
-.setting select {
+.setting select,
+.saved-form select {
   min-height: 44px;
   max-width: 62%;
   padding: 0.4rem 0.7rem;
@@ -785,6 +787,123 @@ summary {
   margin: 0;
   color: var(--muted);
   text-align: right;
+}
+
+/*
+ * Saved items on the keypad: one row that scrolls sideways. Small text over the
+ * liquid, so each chip is ink glass (no blur: there can be twelve of them).
+ */
+.presets {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0 -1rem;
+  padding: 2px 1rem;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: none;
+}
+
+.presets::-webkit-scrollbar {
+  display: none;
+}
+
+.preset {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(120% 100% at var(--spec-x) var(--spec-y), rgba(255, 255, 255, 0.12), transparent 60%),
+    rgba(var(--ink), 0.68);
+  box-shadow: var(--bevel);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.preset > span:first-child {
+  max-width: 11rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.preset-price {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.preset[aria-pressed='true'] {
+  border-color: rgba(255, 224, 138, 0.85);
+}
+
+.preset:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* Saved items in Settings */
+
+.saved {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 0.5rem;
+}
+
+.saved > .setting {
+  border-bottom: 0;
+  padding-bottom: 0.2rem;
+}
+
+.saved .link {
+  min-height: 44px;
+}
+
+.saved-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.saved-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.saved-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.saved-price {
+  color: var(--muted);
+}
+
+.saved-form {
+  margin-top: 0.5rem;
+}
+
+.saved-price-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.saved-price-row .field:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.saved-form select {
+  max-width: none;
+  min-height: 48px;
 }
 
 @media (prefers-reduced-motion: reduce) {

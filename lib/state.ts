@@ -3,6 +3,7 @@
 // must survive `merge`.
 
 import type { SerializedDLEQ } from '@cashu/cashu-ts';
+import type { Presets } from './presets';
 
 export type StoredProof = {
   id: string;
@@ -98,6 +99,8 @@ export type RegisterState = {
   payouts: Payout[];
   /** Absent until the owner changes a setting; the defaults apply. */
   settings?: Settings;
+  /** Saved items for the keypad. Absent until the owner adds one. */
+  presets?: Presets;
 };
 
 const MAX_SPENT = 5000;
@@ -156,10 +159,15 @@ export function merge(a: RegisterState, b: RegisterState): RegisterState {
   const settings = [a.settings, b.settings]
     .filter((s): s is Settings => !!s)
     .sort((x, y) => y.at - x.at || (String(x.fiat) < String(y.fiat) ? -1 : 1))[0];
+  // The list is replaced whole; the later change wins, with a fixed order for a tie.
+  const presets = [a.presets, b.presets]
+    .filter((p): p is Presets => !!p)
+    .sort((x, y) => y.at - x.at || (JSON.stringify(x.items) < JSON.stringify(y.items) ? -1 : 1))[0];
   return {
     v: 1,
     mintUrl: a.mintUrl,
     ...(settings ? { settings } : {}),
+    ...(presets ? { presets } : {}),
     counters,
     proofs: [...proofs.values()].sort((x, y) => (x.secret < y.secret ? -1 : 1)),
     spent: spent.sort(),

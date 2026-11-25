@@ -148,7 +148,7 @@ With `prefers-reduced-motion: reduce`:
 The app is a full-height column (`100dvh`) with safe-area padding: a frosted **bar** on top, one **pane** below. The layout is the same at every width; there are no breakpoints.
 
 - **Bar:** the name on the left, one button on the right. Nothing else.
-- **Keypad** (`.keypad-view`): at most 26rem wide and 46rem tall, centred in both directions. Top to bottom: amount, the converted amount (only when a fiat currency is set), hint line, memo, the 3×4 key grid, Charge. With a fiat currency the big amount is the fiat one and the pill under it (`.convert`, its own ink glass because it is small text over the liquid) gives the ₿ amount and the age of the price; with no current price the pill says so and the keypad takes bitcoin. The amount is pushed down toward the keys so the thumb zone holds everything that is pressed. The grid is between 15rem and 24rem tall.
+- **Keypad** (`.keypad-view`): at most 26rem wide and 46rem tall, centred in both directions. Top to bottom: amount, the converted amount (only when a fiat currency is set), hint line, saved items (only when there are some), memo, the 3×4 key grid, Charge. With a fiat currency the big amount is the fiat one and the pill under it (`.convert`, its own ink glass because it is small text over the liquid) gives the ₿ amount and the age of the price; with no current price the pill says so and the keypad takes bitcoin. The amount is pushed down toward the keys so the thumb zone holds everything that is pressed. The grid is between 15rem and 24rem tall.
 - **Invoice and Paid** (`.center-view`): a frosted card, at most 26rem wide, centred in both directions.
 - **Lock** (`.lock-card`): a frosted card, at most 22rem wide, centred.
 
@@ -169,6 +169,12 @@ Tapping it opens the **drawer** (`.drawer`), a modal `<dialog>` in deep frost th
 
 Inside, top to bottom: the **Register** title and **Done**, the total, the sync line, then Cash out, Backup and Lock, then **Activity**, then **Settings**. New per-register settings go in the Settings section, one row each (label on the left, value or control on the right). A control is a native `<select>` or input styled like the other fields; a one-line note (`.setting-note`) under the row says what the choice does.
 
+**Saved items** is the one setting that is a list: a row per item (name, price, Change, Remove), an **Add an item** link beside the label, and a small form that opens in place under the list. A register keeps at most 12.
+
+### Saved items on the keypad
+
+A single row of pills (`.presets`) above the memo that scrolls sideways and never wraps, so the keys do not move however many there are. Each pill (`.preset`) is ink glass at 68% with no blur, at least 44px tall, with the name in `--text` and the price in `--muted`. A tap fills the amount and the memo and does not charge; the pill whose price and name are showing has an amber rim. The row only holds items priced in the unit the keypad is taking at that moment. An item's price is never converted, and never read as another unit.
+
 The drawer closes with Done, Escape, or a tap on the scrim, and focus returns to the header button. It is closed when the register is unlocked and whenever a sale starts. While it is open the till behind it cannot be pressed and the keyboard does not type into the keypad. Closing it removes it from the page, so it always reopens on the list.
 
 ## Controls and states
@@ -188,7 +194,7 @@ Short, plain and calm. The till talks like a good shop assistant.
 - **Say what happened and what it means for the money:** "Invoice expired. Nobody paid it in time. Nothing was charged."
 - **Busy states name the work,** with an ellipsis: "Making invoice…", "Opening the register…", "Checking the mint…".
 - **Warn once, plainly:** "Anyone with these words can take the money. Keep them offline."
-- **Fiat amounts** are always `formatFiat()` from `lib/fiat.ts`, and never appear without the ₿ amount next to them.
+- **Fiat amounts** are always `formatFiat()` from `lib/fiat.ts`, and never appear without the ₿ amount next to them. The one exception is the price label on a saved item; tapping it puts the ₿ amount on screen.
 - **Amounts** are always `formatBitcoin()` from `lib/format.ts`: the ₿ sign, then a whole number with thousands separators. Never "sats", never decimals of a bitcoin. Money in is prefixed `+` in `--good`; money out is prefixed `−`.
 - No exclamation marks, no emoji, no "Oops".
 

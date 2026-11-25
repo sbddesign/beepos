@@ -357,6 +357,85 @@ test('ring up in dollars, then in yen', async ({ context, page }, testInfo) => {
   await expect(page.getByRole('button', { name: 'Charge ¥1,000' })).toBeEnabled();
 });
 
+test('saved items fill the price and the memo in one tap', async ({ context, page }, testInfo) => {
+  await addAuthenticator(context, page);
+  await prices(page, { USD: '50000', JPY: '8000000' });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a passkey' }).click();
+  const amount = page.getByTestId('amount');
+  await expect(amount).toHaveText('$0.00', { timeout: OPEN });
+  const chips = page.locator('ul.presets');
+  await expect(chips).toHaveCount(0);
+
+  const add = async (name: string, price: string, unit?: string) => {
+    await page.getByRole('button', { name: 'Add an item' }).click();
+    await page.getByLabel('Name').fill(name);
+    await page.getByLabel('Price', { exact: true }).fill(price);
+    if (unit !== undefined) await page.getByLabel('Price is in').selectOption(unit);
+    await page.getByRole('button', { name: 'Save item' }).click();
+  };
+
+  // Add one in dollars and one in bitcoin. A bad price is refused in plain words.
+  await openRegister(page);
+  await add('Flat white', 'four');
+  await expect(page.locator('.saved-form [role=alert]')).toHaveText(
+    'Enter a price in USD, like 4.50.',
+  );
+  await page.getByLabel('Price', { exact: true }).fill('4.50');
+  await page.getByRole('button', { name: 'Save item' }).click();
+  await add('Sticker', '2100', '');
+  const saved = page.locator('ul.saved-list');
+  await expect(saved.getByRole('listitem')).toHaveText([/Flat white\$4\.50/, /Sticker₿2,100/]);
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: testInfo.outputPath('presets-settings.png') });
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  // The keypad takes dollars, so it offers the dollar item only. One tap fills both fields.
+  await expect(chips.getByRole('button')).toHaveText(['Flat white$4.50']);
+  await page.getByRole('button', { name: '7', exact: true }).click();
+  await chips.getByRole('button', { name: 'Flat white' }).click();
+  await expect(amount).toHaveText('$4.50');
+  await expect(page.getByTestId('convert')).toContainText('₿9,000');
+  await expect(page.getByLabel('Memo (optional)')).toHaveValue('Flat white');
+  await page.screenshot({ path: testInfo.outputPath('presets-keypad.png') });
+  await page.getByRole('button', { name: 'Charge $4.50' }).click();
+  await expect(page.getByTestId('invoice-amount')).toHaveText('₿9,000', { timeout: OPEN });
+  await expect(page.getByTestId('invoice-fiat')).toHaveText('$4.50');
+  await expect(page.getByText('Flat white')).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+
+  // Bitcoin only: the bitcoin item shows, and the dollar price is never read as bitcoin.
+  await openRegister(page);
+  await page.getByLabel('Currency').selectOption({ label: 'Bitcoin only' });
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(chips.getByRole('button')).toHaveText(['Sticker₿2,100']);
+  await chips.getByRole('button', { name: 'Sticker' }).click();
+  await expect(amount).toHaveText('₿2,100');
+  await expect(page.getByLabel('Memo (optional)')).toHaveValue('Sticker');
+
+  // A second device: nothing but the passkey brings the items back.
+  await page.evaluate(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  await page.reload();
+  await page.getByRole('button', { name: 'I already have a passkey' }).click();
+  await expect(chips.getByRole('button')).toHaveText(['Sticker₿2,100'], { timeout: OPEN });
+
+  // Change one, remove the other.
+  await openRegister(page);
+  await page.getByRole('button', { name: 'Change Sticker' }).click();
+  await expect(page.getByLabel('Price', { exact: true })).toHaveValue('2100');
+  await page.getByLabel('Price', { exact: true }).fill('500');
+  await page.getByRole('button', { name: 'Save item' }).click();
+  await page.getByRole('button', { name: 'Remove Flat white' }).click();
+  await expect(saved.getByRole('listitem')).toHaveText([
+    /Sticker₿500/,
+  ]);
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(chips.getByRole('button')).toHaveText(['Sticker₿500']);
+});
+
 test('with no price to be had, the keypad takes bitcoin and says why', async ({ context, page }) => {
   await addAuthenticator(context, page);
   await prices(page, null);
