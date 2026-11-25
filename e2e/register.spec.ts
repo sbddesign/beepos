@@ -167,6 +167,45 @@ test('create a passkey, take a payment, and open the register on a second device
   expect((await page.getByTestId('words').innerText()).trim().split(/\s+/)).toHaveLength(12);
   await back.click();
 
+  // Leaving while the passkey prompt is still open withdraws the question: the
+  // prompt is closed, and an answer that arrives later shows and moves nothing.
+  const presence = (enabled: boolean) =>
+    cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled });
+  const backup = page.getByRole('button', { name: 'Backup' });
+  await presence(false);
+  // Back out of Backup.
+  await backup.click();
+  await showWords.click();
+  await expect(showWords).toBeDisabled();
+  await back.click();
+  await backup.click();
+  await expect(showWords).toBeEnabled();
+  await expect(page.getByTestId('words')).toHaveCount(0);
+  // Close the drawer.
+  await showWords.click();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await openRegister(page);
+  await backup.click();
+  await expect(showWords).toBeEnabled();
+  await expect(page.getByTestId('words')).toHaveCount(0);
+  await back.click();
+  // Move from a pending "Show token" to another view.
+  await showToken.click();
+  await backup.click();
+  await expect(showWords).toBeEnabled();
+  await expect(page.getByTestId('token')).toHaveCount(0);
+  await back.click();
+  // Back out of a pending cash out: no token is made.
+  await page.getByRole('button', { name: 'Cash out' }).click();
+  await page.getByRole('button', { name: /^Make ₿[\d,]+ token$/ }).click();
+  await back.click();
+  await expect(page.getByText('Not redeemed yet')).toHaveCount(1);
+  await expect(balance).toHaveText(`₿${left.toLocaleString('en-US')}`);
+  await presence(true);
+  await expect(page.getByTestId('token')).toHaveCount(0);
+  await expect(page.getByTestId('words')).toHaveCount(0);
+
   // A stranger at the unlocked terminal: the prompt appears and they cannot pass it.
   // (Last in the test: the virtual passkey refuses everything after one failed check.)
   await cdp.send('WebAuthn.setUserVerified', { authenticatorId, isUserVerified: false });

@@ -44,11 +44,15 @@ function assertSupported() {
 const NO_PRF =
   'This passkey provider cannot derive keys (no PRF support). Try iCloud Keychain, Google Password Manager, 1Password or Bitwarden on an up-to-date browser.';
 
-/** Unlocks with an existing passkey. Returns the 32-byte PRF secret. */
-export async function unlock(credentialId?: Uint8Array): Promise<Uint8Array> {
+/**
+ * Unlocks with an existing passkey. Returns the 32-byte PRF secret.
+ * Aborting `signal` closes the prompt and rejects as cancelled.
+ */
+export async function unlock(credentialId?: Uint8Array, signal?: AbortSignal): Promise<Uint8Array> {
   assertSupported();
   try {
     const cred = (await navigator.credentials.get({
+      signal,
       publicKey: {
         challenge: crypto.getRandomValues(new Uint8Array(32)),
         rpId: location.hostname,

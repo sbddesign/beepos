@@ -505,6 +505,28 @@ function WalletPanel({
     void register.refreshCashouts().catch(() => {});
   }, [register]);
 
+  // One passkey question at a time. Leaving the view (Back, Done, Lock, closing the
+  // drawer) withdraws it: an answer that arrives afterwards shows and moves nothing.
+  // The prompt itself is closed too, where the browser allows it.
+  const asked = useRef(0);
+  const prompt = useRef<AbortController | null>(null);
+  const leave = useCallback(() => {
+    asked.current++;
+    prompt.current?.abort();
+    prompt.current = null;
+  }, []);
+  useEffect(() => leave, [leave]);
+  const confirm = async () => {
+    leave();
+    const mine = asked.current;
+    const open = (prompt.current = new AbortController());
+    const approval = await approve(register.keys, () => unlock(undefined, open.signal));
+    if (mine !== asked.current) {
+      throw new PasskeyError('cancelled', 'Left before the passkey answered.');
+    }
+    return { approval, current: () => mine === asked.current };
+  };
+
   const entries = useMemo<Entry[]>(() => {
     const sales = register.state.sales
       .filter((s) => s.status !== 'expired')
@@ -545,6 +567,7 @@ function WalletPanel({
         <button
           className="btn ghost close"
           onClick={() => {
+            leave();
             setWords('');
             onClose();
           }}
@@ -566,6 +589,7 @@ function WalletPanel({
               className="btn primary"
               disabled={register.balance === 0}
               onClick={() => {
+                leave();
                 setToken(null);
                 setNote('');
                 setMode('cashout');
@@ -576,6 +600,7 @@ function WalletPanel({
             <button
               className="btn ghost"
               onClick={() => {
+                leave();
                 setWords('');
                 setNote('');
                 setMode('backup');
@@ -583,7 +608,13 @@ function WalletPanel({
             >
               Backup
             </button>
-            <button className="btn ghost" onClick={onLock}>
+            <button
+              className="btn ghost"
+              onClick={() => {
+                leave();
+                onLock();
+              }}
+            >
               Lock
             </button>
           </div>
@@ -622,8 +653,8 @@ function WalletPanel({
                             disabled={busy}
                             onClick={() =>
                               act(async () => {
-                                const ok = await approve(register.keys);
-                                setToken(register.cashoutToken(entry.cashout.id, ok));
+                                const { approval } = await confirm();
+                                setToken(register.cashoutToken(entry.cashout.id, approval));
                                 setMode('cashout');
                               })
                             }
@@ -675,7 +706,10 @@ function WalletPanel({
           note={note}
           onToken={(amount) =>
             act(async () => {
-              setToken(await register.cashOut(amount, await approve(register.keys)));
+              const { approval, current } = await confirm();
+              const made = await register.cashOut(amount, approval);
+              // Made after leaving: it stays in Activity, where showing it asks again.
+              if (current()) setToken(made);
             })
           }
           onReclaim={(id) =>
@@ -686,6 +720,8 @@ function WalletPanel({
             })
           }
           onBack={() => {
+            leave();
+            setToken(null);
             setNote('');
             setMode('list');
           }}
@@ -713,7 +749,7 @@ function WalletPanel({
               className="btn ghost"
               disabled={busy}
               onClick={() =>
-                act(async () => setWords(register.backupWords(await approve(register.keys))))
+                act(async () => setWords(register.backupWords((await confirm()).approval)))
               }
             >
               Show the 12 words
@@ -736,6 +772,7 @@ function WalletPanel({
           <button
             className="btn ghost"
             onClick={() => {
+              leave();
               setWords('');
               setNote('');
               setMode('list');
