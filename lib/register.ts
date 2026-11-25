@@ -96,6 +96,8 @@ export class Register {
   private listeners = new Set<() => void>();
   private dirty = false;
   private pushing: Promise<void> | null = null;
+  private io: Promise<unknown> = Promise.resolve();
+  private local: Promise<unknown> = Promise.resolve();
   private settling = new Map<string, Promise<Sale>>();
   /** Lightning cash-outs this tab is asking the mint to pay right now. */
   private melting = new Set<string>();
@@ -174,7 +176,30 @@ export class Register {
 
   // ---- vault sync -------------------------------------------------------
 
+  /**
+   * Saves the current state on this device. Independent of the server: it never
+   * waits for a vault request, so a stalled connection cannot leave a sale or new
+   * ecash in memory only. Saves run in order and each seals the state as it is then.
+   * Resolves true when this save was written, false when the device refused it
+   * (storage full or switched off).
+   */
+  private persist(): Promise<boolean> {
+    const saved = this.local.then(async () => {
+      try {
+        const version = this.version;
+        const blob = await seal(this.keys.vaultKey, JSON.stringify(this.state));
+        this.env.saveLocal(this.keys.accountId, JSON.stringify({ version, blob }));
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    this.local = saved;
+    return saved;
+  }
+
   private schedulePush() {
+    void this.persist();
     this.dirty = true;
     this.pushing ??= this.pushLoop().finally(() => {
       this.pushing = null;
@@ -184,30 +209,43 @@ export class Register {
   /** Resolves when every change made so far is stored (or the push failed). */
   async flush(): Promise<void> {
     while (this.pushing) await this.pushing;
+    await this.local;
   }
 
   private async pushLoop() {
     let attempts = 0;
     while (this.dirty && attempts++ < 8) {
       this.dirty = false;
-      await this.pushOnce();
+      await this.exclusive(() => this.pushOnce());
     }
+  }
+
+  /**
+   * One vault exchange at a time. A write's snapshot and the version it is based on
+   * are read together and stay paired until the server has answered, and a read is
+   * merged before anything else can build on its version.
+   */
+  private exclusive<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.io.then(work, work);
+    this.io = run.catch(() => {});
+    return run;
   }
 
   private async pushOnce() {
     const snapshot = this.state;
-    const blob = await seal(this.keys.vaultKey, JSON.stringify(snapshot));
-    this.env.saveLocal(this.keys.accountId, JSON.stringify({ version: this.version, blob }));
+    const base = this.version;
     if (this.sync === 'local') return;
-    const body = JSON.stringify({ baseVersion: this.version, blob });
+    const blob = await seal(this.keys.vaultKey, JSON.stringify(snapshot));
+    const body = JSON.stringify({ baseVersion: base, blob });
     try {
       const res = await this.env.vault('PUT', signRequest(this.keys.authPrivkey, 'PUT', body), body);
       if (res.status === 200) {
         this.version = res.body.version;
-        this.env.saveLocal(this.keys.accountId, JSON.stringify({ version: this.version, blob }));
+        void this.persist();
         this.setSync('synced');
       } else if (res.status === 409) {
-        await this.absorb(res.body);
+        // The server's answer to our own write says exactly where it stands.
+        await this.absorb(res.body, true);
         this.dirty = true;
       } else if (res.status === 503) {
         this.setSync('local');
@@ -219,12 +257,25 @@ export class Register {
     }
   }
 
-  /** Merges a server record into the local state. */
-  private async absorb(record: VaultRecord) {
-    this.version = record.version;
-    if (!record.blob) return;
+  /**
+   * Merges a server record into the local state. The record is decrypted and
+   * checked first: one that cannot be read (damaged, or written by a newer
+   * beepos) throws and changes nothing, so the next write is refused by the
+   * server instead of replacing a copy this register never understood.
+   * Only after the merge does the register adopt the record's version.
+   */
+  private async absorb(record: VaultRecord, authoritative = false) {
+    // An answer older than what is already merged has nothing new in it.
+    if (!authoritative && record.version < this.version) return;
+    if (!record.blob) {
+      this.version = record.version;
+      void this.persist();
+      return;
+    }
     const remote = parseState(await open(this.keys.vaultKey, record.blob), this.state.mintUrl);
     const merged = merge(this.state, remote);
+    this.version = record.version;
+    void this.persist();
     if (!sameState(merged, this.state)) {
       this.state = merged;
       await this.syncCounters();
@@ -234,7 +285,11 @@ export class Register {
   }
 
   /** Fetches the server copy and merges it in. Safe to call any time. */
-  async pull(): Promise<void> {
+  pull(): Promise<void> {
+    return this.exclusive(() => this.pullOnce());
+  }
+
+  private async pullOnce(): Promise<void> {
     try {
       const res = await this.env.vault('GET', signRequest(this.keys.authPrivkey, 'GET', ''), '');
       if (res.status === 503) return this.setSync('local');
@@ -545,6 +600,13 @@ export class Register {
     if (quote.expiry * 1000 < Date.now()) throw new Error('That quote expired. Check the cost again.');
     if (need > this.balance) throw new Error('Not enough in the register for the amount and the fee reserve.');
     if (this.state.payouts.some((p) => p.id === quote.id)) throw new Error('That payment was already started.');
+    // Nowhere to save right now (device storage refuses, server unreachable): stop
+    // before any ecash is touched.
+    if (!(await this.persist())) {
+      await this.pull();
+      await this.flush();
+      if (!(this.sync === 'synced' && !this.dirty)) throw new Error(UNSAVED);
+    }
     redeem(approval, this.keys);
 
     // Swap for ecash worth exactly the amount, the reserve and the mint's input fee.
@@ -578,8 +640,20 @@ export class Register {
       };
     });
     this.melting.add(quote.id);
+    // The record of what was set aside must be written somewhere that survives this
+    // tab, on this device or on the server, before the mint is asked to pay.
+    const savedHere = await this.persist();
+    await this.flush();
+    if (!savedHere && !(this.sync === 'synced' && !this.dirty)) {
+      this.melting.delete(quote.id);
+      this.commit((s) => ({
+        ...s,
+        proofs: dedupe([...s.proofs, ...aside]).filter((p) => !s.spent.includes(p.secret)),
+        payouts: s.payouts.filter((p) => p.id !== quote.id),
+      }));
+      throw new Error(UNSAVED);
+    }
     try {
-      await this.flush();
       const res =
         quote.method === 'bolt12'
           ? await this.wallet.meltProofsBolt12(quote.raw, send)
@@ -705,6 +779,10 @@ export class Register {
   }
 }
 
+const VAULT_TIMEOUT_MS = 20_000;
+const UNSAVED =
+  'Could not save the payment record on this device or the backup server, so nothing was paid.';
+
 /** The real environment: localStorage and the app's own /api/vault. */
 export const browserEnv: RegisterEnv = {
   loadLocal: (accountId) => localStorage.getItem(`beepos:vault:${accountId}`),
@@ -715,6 +793,8 @@ export const browserEnv: RegisterEnv = {
       headers: { Authorization: authorization, 'Content-Type': 'application/json' },
       body: method === 'PUT' ? body : undefined,
       cache: 'no-store',
+      // A request that hangs must not hold up the ones behind it for ever.
+      signal: AbortSignal.timeout(VAULT_TIMEOUT_MS),
     });
     return { status: res.status, body: await res.json() };
   },
