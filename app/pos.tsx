@@ -70,10 +70,29 @@ function loadRates(): Promise<Rates | null> {
  * visible. `loading` is true until the first answer or failure. Re-renders twice a
  * minute so an old price is noticed and its age reads right.
  */
-function useRates(enabled: boolean): { rates: Rates | null; loading: boolean } {
+function useRates(enabled: boolean): {
+  rates: Rates | null;
+  loading: boolean;
+  refresh: () => void;
+} {
   const [rates, setRates] = useState<Rates | null>(lastRates);
   const [loading, setLoading] = useState(enabled && !lastRates);
   const [, setTick] = useState(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const refresh = useCallback(() => {
+    void loadRates().then((next) => {
+      if (!mounted.current) return;
+      setRates(next);
+      setLoading(false);
+      setTick((n) => n + 1);
+    });
+  }, []);
   useEffect(() => {
     if (!enabled) return;
     let live = true;
@@ -95,7 +114,7 @@ function useRates(enabled: boolean): { rates: Rates | null; loading: boolean } {
       document.removeEventListener('visibilitychange', refresh);
     };
   }, [enabled]);
-  return { rates, loading };
+  return { rates, loading, refresh };
 }
 
 function saleFiat(sale: Sale): string | null {
@@ -361,7 +380,9 @@ function mintLimits(register: Register): { min: number; max: number } {
 }
 
 function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sale) => void }) {
-  const [digits, setDigits] = useState('');
+  // What was typed, and the unit it was typed in. Digits typed as one unit are
+  // never read as another: when the unit changes they count as nothing.
+  const [entry, setEntry] = useState({ unit: '', digits: '' });
   const [memo, setMemo] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -369,34 +390,38 @@ function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sa
   // (in its smallest unit) and the invoice is for the bitcoin it is worth now.
   // Without a current price the keypad takes bitcoin: it never guesses.
   const currency = register.fiat;
-  const { rates, loading } = useRates(currency !== null);
+  const { rates, loading, refresh } = useRates(currency !== null);
   const rate = currency ? usableRate(rates, currency) : null;
   const inFiat = currency !== null && rate !== null;
+  const unit = inFiat ? currency : '';
+  const digits = entry.unit === unit ? entry.digits : '';
   const typed = Number(digits || '0');
   const amount = inFiat ? toBitcoin(typed, currency, rate) : typed;
   const shown = inFiat ? formatFiat(typed, currency) : formatBitcoin(amount);
-  // The digits mean something else when the unit changes, so start over.
-  const unit = inFiat ? currency : '';
-  const lastUnit = useRef(unit);
-  useEffect(() => {
-    if (lastUnit.current !== unit) setDigits('');
-    lastUnit.current = unit;
-  }, [unit]);
   const limits = useMemo(() => mintLimits(register), [register]);
   const tooBig = amount > limits.max;
   const ready = amount >= limits.min && !tooBig && !busy;
 
   const press = useCallback((key: string) => {
     setError('');
-    setDigits((d) => {
-      if (key === 'back') return d.slice(0, -1);
+    setEntry((e) => {
+      const d = e.unit === unit ? e.digits : '';
+      if (key === 'back') return { unit, digits: d.slice(0, -1) };
       const next = (d + key).replace(/^0+/, '');
-      return next.length > MAX_DIGITS ? d : next;
+      return { unit, digits: next.length > MAX_DIGITS ? d : next };
     });
-  }, []);
+  }, [unit]);
 
   const charge = useCallback(async () => {
     if (!ready) return;
+    // The price on screen is from the last render. A tab that was asleep can wake
+    // with it long out of date, so it is checked again at the moment of charging.
+    if (inFiat && usableRate(rates, currency) !== rate) {
+      setEntry({ unit: '', digits: '' });
+      setError('The price is out of date. Nothing was charged. Enter the amount again.');
+      refresh();
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -411,7 +436,7 @@ function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sa
       setError(`Could not make the invoice. ${message(err)}`);
       setBusy(false);
     }
-  }, [ready, register, amount, memo, onCharged, inFiat, currency, typed, rate]);
+  }, [ready, register, amount, memo, onCharged, inFiat, currency, typed, rate, rates, refresh]);
 
   // A desktop keyboard works as the keypad unless the memo field has focus.
   useEffect(() => {

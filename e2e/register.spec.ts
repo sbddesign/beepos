@@ -373,3 +373,21 @@ test('with no price to be had, the keypad takes bitcoin and says why', async ({ 
   await expect(page.getByTestId('invoice-amount')).toHaveText('₿21', { timeout: OPEN });
   await expect(page.getByTestId('invoice-fiat')).toHaveCount(0);
 });
+
+test('a price that went out of date while the tab slept is not charged at', async ({ context, page }) => {
+  await addAuthenticator(context, page);
+  await prices(page, { USD: '50000' });
+  await page.clock.install();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a passkey' }).click();
+  await expect(page.getByTestId('amount')).toHaveText('$0.00', { timeout: OPEN });
+  for (const d of ['1', '2', '5', '0']) await page.getByRole('button', { name: d, exact: true }).click();
+  const charge = page.getByRole('button', { name: 'Charge $12.50' });
+  await expect(charge).toBeEnabled();
+  // The clock jumps 11 minutes with no timer firing: the screen still shows the old price.
+  await page.clock.setSystemTime(Date.now() + 11 * 60_000);
+  await charge.click();
+  await expect(page.getByRole('alert').filter({ hasText: 'The price is out of date' })).toBeVisible();
+  await expect(page.getByTestId('invoice-amount')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Charge', exact: true })).toBeDisabled();
+});
