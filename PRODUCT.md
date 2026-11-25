@@ -23,7 +23,7 @@ Today the real users are the owner of this repository and one or two friends who
 | **One credential** | A passkey. No email, no password, no account form. The passkey's secret becomes the wallet seed, so the passkey alone restores the money on any device it syncs to, as long as the browser and the passkey provider there both support the WebAuthn PRF extension. Syncing the passkey is not enough by itself; without PRF the register cannot be opened and the 12 words are the way back. |
 | **Money in** | Lightning invoices, one per sale. |
 | **Money held** | Cashu ecash at one mint, chosen for the owner (Minibits by default). |
-| **Money out** | Cash out to a Cashu token. Paying a Lightning invoice, Lightning address or BOLT12 offer is planned (#7). |
+| **Money out** | Cash out by paying a Lightning invoice or Lightning address, or to a Cashu token. BOLT12 offers work on mints that support them (Minibits does not yet). |
 | **Amounts** | [BIP-177](https://github.com/bitcoin/bips/blob/master/bip-0177.mediawiki): whole bitcoin with the ₿ sign. ₿2,100 is what used to be called 2,100 sats. Entering amounts in a fiat currency, with the ₿ amount shown beside it, is planned (#8). |
 | **Backup** | Automatic. The register is encrypted in the browser and stored as one blob the server cannot read. A 12-word seed is there as a last resort. |
 

@@ -1,10 +1,14 @@
 import {
+  MeltQuoteState,
   MintOperationError,
   MintQuoteState,
   Wallet,
   getEncodedToken,
+  type MeltQuoteBolt11Response,
   type Proof,
 } from '@cashu/cashu-ts';
+import type { Destination } from './destination';
+import { lnurlInvoice } from './lnurl';
 import type { RegisterKeys } from './keys';
 import { redeem, type Approval } from './reauth';
 import {
@@ -12,8 +16,10 @@ import {
   emptyState,
   merge,
   parseState,
+  reserved,
   sameState,
   type Cashout,
+  type Payout,
   type RegisterState,
   type Sale,
   type StoredProof,
@@ -49,6 +55,33 @@ function dedupe(proofs: StoredProof[]): StoredProof[] {
   return [...new Map(proofs.map((p) => [p.secret, p])).values()];
 }
 
+/** How long after a melt quote runs out before its ecash is released, in case a request is in flight. */
+const PAYOUT_GRACE_SECONDS = 120;
+
+/** What a Lightning cash-out will cost, from the mint, before anything is paid. */
+export type PayoutQuote = {
+  id: string;
+  method: 'bolt11' | 'bolt12';
+  to: string;
+  /** Amount the recipient gets. */
+  amount: number;
+  /** The most the mint may keep for routing; what is not used comes back. */
+  feeReserve: number;
+  /** The least that stays in the register: balance - amount - feeReserve. */
+  left: number;
+  /** Unix seconds. */
+  expiry: number;
+  raw: MeltQuoteBolt11Response;
+};
+
+function short(text: string): string {
+  return text.length > 24 ? `${text.slice(0, 14)}…${text.slice(-6)}` : text;
+}
+
+function total(proofs: { amount: number }[]): number {
+  return proofs.reduce((sum, p) => sum + p.amount, 0);
+}
+
 function isMintError(err: unknown, code: number): boolean {
   return err instanceof MintOperationError && err.code === code;
 }
@@ -61,6 +94,8 @@ export class Register {
   private dirty = false;
   private pushing: Promise<void> | null = null;
   private settling = new Map<string, Promise<Sale>>();
+  /** Lightning cash-outs this tab is asking the mint to pay right now. */
+  private melting = new Set<string>();
 
   private constructor(
     readonly keys: RegisterKeys,
@@ -328,10 +363,14 @@ export class Register {
       : { spent: [] as StoredProof[] };
     this.commit((s) => {
       const gone = new Set([...s.spent, ...spent.map((p) => p.secret)]);
+      // A restore also finds ecash set aside for a pending Lightning cash-out. It stays set aside.
+      const held = reserved(s.payouts);
       return {
         ...s,
         spent: [...gone],
-        proofs: dedupe([...s.proofs, ...found]).filter((p) => !gone.has(p.secret)),
+        proofs: dedupe([...s.proofs, ...found]).filter(
+          (p) => !gone.has(p.secret) && !held.has(p.secret),
+        ),
       };
     });
     return this.balance;
@@ -388,6 +427,216 @@ export class Register {
     if (!cashout) throw new Error('Unknown cash out');
     redeem(approval, this.keys);
     return cashout;
+  }
+
+  // ---- cash out over Lightning --------------------------------------------
+
+  /** Whether the mint can pay BOLT12 offers. Minibits cannot (2026-11). */
+  get paysOffers(): boolean {
+    const methods = this.wallet.getMintInfo().cache.nuts?.['5']?.methods ?? [];
+    return methods.some((m) => m.method === 'bolt12' && m.unit === 'sat');
+  }
+
+  /**
+   * Asks the mint what paying `to` would cost. Nothing moves. `amount` is needed
+   * for a Lightning address, and for an invoice or offer that leaves it open.
+   */
+  async quotePayout(to: Destination, amount?: number): Promise<PayoutQuote> {
+    const open = amount != null ? amount * 1000 : undefined;
+    const needAmount = () => {
+      if (!amount || !Number.isSafeInteger(amount) || amount <= 0) throw new Error('Enter an amount.');
+    };
+    let raw: MeltQuoteBolt11Response;
+    let method: PayoutQuote['method'] = 'bolt11';
+    let label: string;
+    if (to.kind === 'bolt12') {
+      if (!this.paysOffers) throw new Error('This mint cannot pay BOLT12 offers yet. Use an invoice or a Lightning address.');
+      method = 'bolt12';
+      label = short(to.offer);
+      try {
+        // An offer that names its amount must be quoted without one.
+        raw = await this.wallet.createMeltQuoteBolt12(to.offer);
+        amount = undefined;
+      } catch (err) {
+        if (!(err instanceof MintOperationError) || open == null) throw err;
+        raw = await this.wallet.createMeltQuoteBolt12(to.offer, open);
+      }
+    } else if (to.kind === 'lnurl') {
+      needAmount();
+      label = to.label;
+      raw = await this.wallet.createMeltQuoteBolt11(await lnurlInvoice(to.url, amount!));
+    } else if (to.amount == null) {
+      needAmount();
+      label = short(to.invoice);
+      raw = await this.wallet.createMeltQuoteBolt11(to.invoice, open);
+    } else {
+      label = short(to.invoice);
+      raw = await this.wallet.createMeltQuoteBolt11(to.invoice);
+    }
+    const quoted = raw.amount.toNumber();
+    // The mint names the amount. It must be the one asked for, not more.
+    const expected = to.kind === 'bolt11' && to.amount != null ? to.amount : amount;
+    if (expected != null && quoted !== expected) {
+      throw new Error('The mint quoted a different amount than asked. Nothing was paid.');
+    }
+    const feeReserve = raw.fee_reserve.toNumber();
+    return {
+      id: raw.quote,
+      method,
+      to: label,
+      amount: quoted,
+      feeReserve,
+      left: this.balance - quoted - feeReserve,
+      expiry: raw.expiry,
+      raw,
+    };
+  }
+
+  /**
+   * Pays a quote over Lightning. Needs a fresh passkey approval, which it uses up.
+   *
+   * The ecash for the payment is set aside and saved before the mint is asked
+   * to pay, so a crash or a lost connection at any point leaves either the
+   * payment made or the ecash recoverable by `settlePayout`. It stays set aside
+   * until the mint says paid, the mint refuses the payment to our face, or the
+   * quote has run out and can no longer be paid.
+   */
+  async payOut(quote: PayoutQuote, approval: Approval): Promise<Payout> {
+    const need = quote.amount + quote.feeReserve;
+    if (quote.expiry * 1000 < Date.now()) throw new Error('That quote expired. Check the cost again.');
+    if (need > this.balance) throw new Error('Not enough in the register for the amount and the fee reserve.');
+    if (this.state.payouts.some((p) => p.id === quote.id)) throw new Error('That payment was already started.');
+    redeem(approval, this.keys);
+
+    // Swap for ecash worth exactly the amount, the reserve and the mint's input fee.
+    const inputs = this.state.proofs;
+    const { keep, send } = await this.wallet.send(need, inputs, { includeFees: true });
+    const aside = send.map(toStored);
+    const kept = keep.map(toStored).filter((p) => !aside.some((x) => x.secret === p.secret));
+    const keptSecrets = new Set(kept.map((p) => p.secret));
+    const asideSecrets = new Set(aside.map((p) => p.secret));
+    const used = inputs.filter((p) => !keptSecrets.has(p.secret) && !asideSecrets.has(p.secret));
+    const payout: Payout = {
+      id: quote.id,
+      method: quote.method,
+      to: quote.to,
+      amount: quote.amount,
+      feeReserve: quote.feeReserve,
+      createdAt: Date.now(),
+      expiry: quote.expiry,
+      status: 'pending',
+      inputs: aside,
+    };
+    this.commit((s) => {
+      const gone = new Set([...s.spent, ...used.map((p) => p.secret)]);
+      return {
+        ...s,
+        spent: [...gone],
+        proofs: dedupe([...s.proofs, ...kept]).filter(
+          (p) => !gone.has(p.secret) && !asideSecrets.has(p.secret),
+        ),
+        payouts: [...s.payouts, payout],
+      };
+    });
+    this.melting.add(quote.id);
+    try {
+      await this.flush();
+      const res =
+        quote.method === 'bolt12'
+          ? await this.wallet.meltProofsBolt12(quote.raw, send)
+          : await this.wallet.meltProofsBolt11(quote.raw, send);
+      if (res.quote.state === MeltQuoteState.PAID) {
+        return this.closePayout(quote.id, res.change, aside);
+      }
+    } catch (err) {
+      // Only an answer from the mint itself ends the attempt. A lost connection does
+      // not: the request may still arrive, so the ecash stays set aside.
+      const refused = err instanceof MintOperationError;
+      const settled = await this.resolvePayout(quote.id, refused, aside).catch(() => null);
+      if (settled?.status === 'failed') {
+        const why = err instanceof Error && err.message ? ` (${err.message})` : '';
+        throw new Error(`The payment did not go through${why}. The money is back in the register.`);
+      }
+      if (settled) return settled;
+    } finally {
+      this.melting.delete(quote.id);
+    }
+    return this.state.payouts.find((p) => p.id === quote.id)!;
+  }
+
+  /**
+   * Records that the mint paid. The mint's word is final: this also corrects a
+   * record that some copy of the state had already written off as failed.
+   */
+  private closePayout(id: string, change: Proof[] | null, inputs?: StoredProof[]): Payout {
+    const payout = this.state.payouts.find((p) => p.id === id)!;
+    if (payout.status === 'paid') return payout;
+    const used = inputs ?? payout.inputs;
+    const back = (change ?? []).map(toStored);
+    const fee = change && used.length ? total(used) - payout.amount - total(back) : undefined;
+    this.commit((s) => {
+      const gone = new Set([...s.spent, ...used.map((p) => p.secret)]);
+      return {
+        ...s,
+        spent: [...gone],
+        proofs: dedupe([...s.proofs, ...back]).filter((p) => !gone.has(p.secret)),
+        payouts: s.payouts.map((p) =>
+          p.id === id ? { ...p, status: 'paid', paidAt: Date.now(), inputs: [], fee } : p,
+        ),
+      };
+    });
+    return this.state.payouts.find((p) => p.id === id)!;
+  }
+
+  /**
+   * Asks the mint how a pending Lightning cash-out ended. Paid: the change is
+   * restored from the seed. Not paid: the ecash set aside returns to the register.
+   */
+  settlePayout(id: string): Promise<Payout> {
+    return this.resolvePayout(id, false);
+  }
+
+  /**
+   * `refused` is true only when the mint itself has just turned the payment down in
+   * this tab. Otherwise "unpaid" may only mean "not asked yet": another tab or device
+   * may be about to ask, so the ecash is released only after the quote has run out.
+   */
+  private async resolvePayout(id: string, refused: boolean, inputs?: StoredProof[]): Promise<Payout> {
+    const payout = this.state.payouts.find((p) => p.id === id);
+    if (!payout) throw new Error('Unknown payment');
+    if (payout.status !== 'pending') return payout;
+    if (this.melting.has(id) && !refused) return payout;
+    const quote =
+      payout.method === 'bolt12'
+        ? await this.wallet.checkMeltQuoteBolt12(id)
+        : await this.wallet.checkMeltQuoteBolt11(id);
+    if (quote.state === MeltQuoteState.PAID) {
+      const paid = this.closePayout(id, null, inputs);
+      // The change was signed for outputs made from the seed, so a restore finds it.
+      await this.recover().catch(() => {});
+      return paid;
+    }
+    if (quote.state !== MeltQuoteState.UNPAID) return payout;
+    const lapsed = (payout.expiry + PAYOUT_GRACE_SECONDS) * 1000 < Date.now();
+    if (!refused && !lapsed) return payout;
+    // Even then, "unpaid" is only acted on when the mint holds none of the ecash as
+    // spent or in flight. Otherwise wait and ask again.
+    if (payout.inputs.length) {
+      const { unspent } = await this.wallet.groupProofsByState(payout.inputs);
+      if (unspent.length !== payout.inputs.length) return payout;
+    }
+    this.commit((s) => ({
+      ...s,
+      proofs: dedupe([...s.proofs, ...payout.inputs]).filter((p) => !s.spent.includes(p.secret)),
+      payouts: s.payouts.map((p) => (p.id === id ? { ...p, status: 'failed', inputs: [] } : p)),
+    }));
+    return this.state.payouts.find((p) => p.id === id)!;
+  }
+
+  /** Settles every pending Lightning cash-out. Errors on one do not stop the others. */
+  async settlePayouts(): Promise<void> {
+    const open = this.state.payouts.filter((p) => p.status === 'pending');
+    await Promise.allSettled(open.map((p) => this.settlePayout(p.id)));
   }
 
   /** Takes an unredeemed cash-out token back into the register. Safe: no approval needed. */
