@@ -160,6 +160,14 @@ The app is a full-height column (`100dvh`) with safe-area padding: a frosted **b
 
 The keypad, invoice and Paid screens show only the sale in front of you. The drawer total, the activity list and the seed words are **not in the page** until the owner opens the register: not hidden with CSS, not in an accessible label, not in a tooltip. Any new screen that a customer can see follows the same rule.
 
+### The about page
+
+`/about` is the one public page: the product video and the way in. It is a single frost card (`.about-card`, at most 46rem wide) centred on the liquid: mark and name, one headline, the video at 16:9 with native controls and a poster, two lines of copy, an amber **Get started** that goes home, and one fine-print line. It opens no register and shows nothing private. The video never plays by itself.
+
+The lock screen links to it with "What is beepos?" as a quiet link (`.quiet-link`: muted, underlined, 44px tall), so the amber passkey button stays the only loud thing there.
+
+The video files live at `public/video/beepos.webm`, `beepos.mp4` and `beepos-poster.jpg`.
+
 ### The register drawer
 
 The header button (`.till-btn`) is a pill of clear glass holding the sync dot and a till icon. Its label is "Open the register". It never shows or reads out an amount.

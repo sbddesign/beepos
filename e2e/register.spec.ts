@@ -551,3 +551,35 @@ test('a price that went out of date while the tab slept is not charged at', asyn
   await expect(page.getByTestId('invoice-amount')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Charge', exact: true })).toBeDisabled();
 });
+
+test('the home screen links to the about page, and Get started comes back', async ({ page }, testInfo) => {
+  await page.goto('/');
+  await expect(page.getByRole('button', { name: 'Create a passkey' })).toBeVisible();
+  await page.getByRole('link', { name: 'What is beepos?' }).click();
+  await expect(page).toHaveURL(/\/about$/);
+  await expect(page).toHaveTitle('What is beepos?');
+  await expect(page.getByRole('heading', { name: 'The cash register from the future.' })).toBeVisible();
+
+  // The video is there, with both formats and a poster, and does not start by itself.
+  const video = page.locator('video');
+  await expect(video).toHaveAttribute('poster', '/video/beepos-poster.jpg');
+  await expect(video).toHaveAttribute('controls', '');
+  await expect(video).toHaveAttribute('playsinline', '');
+  expect(await video.evaluate((v: HTMLVideoElement) => v.autoplay)).toBe(false);
+  expect(await video.locator('source').evaluateAll((els) => els.map((s) => s.getAttribute('src')))).toEqual([
+    '/video/beepos.webm',
+    '/video/beepos.mp4',
+  ]);
+  for (const path of ['/video/beepos.webm', '/video/beepos.mp4', '/video/beepos-poster.jpg']) {
+    expect((await page.request.get(path)).status(), path).toBe(200);
+  }
+  // Nothing wider than the screen, and the way in is on it.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  expect(await page.locator('meta[property="og:image"]').getAttribute('content')).toMatch(/opengraph-image/);
+  await page.screenshot({ path: testInfo.outputPath('about.png'), fullPage: true });
+
+  await page.getByRole('link', { name: 'Get started' }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole('button', { name: 'Create a passkey' })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath('home.png') });
+});
