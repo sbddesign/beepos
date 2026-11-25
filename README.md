@@ -78,6 +78,7 @@ npm run e2e              # the whole app in Chromium with a virtual passkey
 | `lib/state.ts` | The state blob and how two devices' copies merge |
 | `lib/vault-*.ts`, `app/api/vault` | Encrypted blob storage with signed requests |
 | `app/pos.tsx` | The screens |
+| `app/about` | The public page with the product video |
 | `app/fx/*`, `app/globals.css` | The liquid and the glass |
 
 What the product is for is in [PRODUCT.md](PRODUCT.md); how it looks and moves is in [DESIGN.md](DESIGN.md).

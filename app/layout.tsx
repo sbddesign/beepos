@@ -10,7 +10,11 @@ const manrope = Manrope({
   display: 'swap',
 });
 
+// Share images need absolute addresses. Previews and other hosts can set their own.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://beepos.sbd.design';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: 'beepos',
   description: 'The cash register from the future. Start receiving Bitcoin today.',
   manifest: '/manifest.webmanifest',

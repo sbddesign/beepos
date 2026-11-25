@@ -1,6 +1,7 @@
 'use client';
 
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseDestination, type Destination } from '@/lib/destination';
 import {
@@ -229,6 +230,9 @@ export function Pos({ mintUrl }: { mintUrl: string }) {
             {error}
           </p>
         )}
+        <Link className="quiet-link" href="/about">
+          What is beepos?
+        </Link>
       </div>
     </main>
   );

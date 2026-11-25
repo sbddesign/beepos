@@ -174,6 +174,7 @@ textarea {
 }
 
 .btn:focus-visible,
+.quiet-link:focus-visible,
 .key:focus-visible,
 .till-btn:focus-visible,
 .link:focus-visible,
@@ -191,6 +192,93 @@ summary:focus-visible {
   color: var(--accent);
   text-decoration: underline;
   cursor: pointer;
+}
+
+/* A way to somewhere else that must not compete with the one amber button. */
+.quiet-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 0.5rem;
+  border-radius: 12px;
+  color: var(--muted);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+/* About page */
+
+.about {
+  position: relative;
+  z-index: 1;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem 1rem;
+}
+
+.about-card {
+  width: min(100%, 46rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
+  padding: 1.75rem clamp(1rem, 4vw, 2rem) 1.5rem;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: 30px;
+  background:
+    radial-gradient(110% 60% at var(--spec-x) var(--spec-y), rgba(255, 255, 255, 0.07), transparent 60%),
+    var(--frost);
+  -webkit-backdrop-filter: var(--frost-filter);
+  backdrop-filter: var(--frost-filter);
+  box-shadow:
+    var(--bevel),
+    inset 0 0 40px rgba(255, 255, 255, 0.03),
+    0 30px 60px -20px rgba(0, 0, 0, 0.6);
+}
+
+.about-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: 1.25rem;
+}
+
+.about-card h1 {
+  font-size: clamp(1.7rem, 6vw, 2.6rem);
+  font-weight: 300;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  text-wrap: balance;
+}
+
+.about-video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgb(var(--ink));
+}
+
+.about-card .muted {
+  max-width: 32rem;
+  text-wrap: balance;
+}
+
+.about-go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: min(100%, 16rem);
+  text-decoration: none;
+}
+
+.about-fine {
+  color: var(--muted);
+  font-size: 0.85rem;
 }
 
 /* Lock screen */
