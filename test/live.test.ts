@@ -5,6 +5,8 @@ import { approve } from '@/lib/reauth';
 import { Register, type RegisterEnv } from '@/lib/register';
 import { verifyRequest } from '@/lib/vault-auth';
 import { balance, merge } from '@/lib/state';
+import { parseState } from '@/lib/state';
+import { open, seal } from '@/lib/vault-crypto';
 import { MemoryVaultStore } from '@/lib/vault-store';
 
 // Talks to a real test mint (fake Lightning: invoices pay themselves).
@@ -296,5 +298,93 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
     // Taking it back still works.
     await phone.reclaim(cashout.id);
     expect(phone.balance).toBeGreaterThanOrEqual(after + 18);
+  it('never writes over a server copy it could not read (#16)', async () => {
+    const keys = deriveKeys(crypto.getRandomValues(new Uint8Array(32)));
+    const server = new MemoryVaultStore();
+    const env = device(server);
+    const till = await Register.open(keys, MINT, env);
+    await till.charge(5, 'first');
+    await till.flush();
+    expect(till.sync).toBe('synced');
+    const mine = (await server.get(keys.accountId))!;
+
+    // The server now holds something this build cannot read: a newer format, or damage.
+    for (const foreign of [
+      await seal(keys.vaultKey, JSON.stringify({ v: 2, future: true })),
+      'not a vault blob',
+    ]) {
+      const base = (await server.get(keys.accountId))!.version;
+      expect((await server.put(keys.accountId, base, foreign)).ok).toBe(true);
+      const theirs = (await server.get(keys.accountId))!;
+
+      // Three rounds of changes and syncs. None may replace it.
+      for (const memo of ['a', 'b', 'c']) {
+        await till.charge(5, memo);
+        await till.flush();
+        await till.pull();
+        await till.flush();
+        expect(await server.get(keys.accountId)).toEqual(theirs);
+        expect(till.sync).toBe('offline');
+      }
+    }
+    expect(mine.version).toBeLessThan((await server.get(keys.accountId))!.version);
+
+    // The local encrypted copy still has every sale, and reopens.
+    const saved = JSON.parse(env.loadLocal(keys.accountId)!);
+    const local = parseState(await open(keys.vaultKey, saved.blob), MINT);
+    expect(local.sales.map((x) => x.memo)).toEqual(['first', 'a', 'b', 'c', 'a', 'b', 'c']);
+    const again = await Register.open(keys, MINT, env);
+    expect(again.state.sales).toHaveLength(7);
+  }, 240_000);
+
+  it('a write that overlaps a read never drops what the server had (#16)', async () => {
+    const keys = deriveKeys(crypto.getRandomValues(new Uint8Array(32)));
+    const server = new MemoryVaultStore();
+    const sales = async () => {
+      const rec = await server.get(keys.accountId);
+      return rec?.blob ? parseState(await open(keys.vaultKey, rec.blob), MINT).sales.map((x) => x.memo) : [];
+    };
+
+    // The till's connection: a hook runs when a read's answer arrives, before the
+    // register sees it, and every accepted write is checked against what it replaced.
+    const inner = device(server);
+    let onRead: (() => void) | null = null;
+    const dropped: string[][] = [];
+    const env: typeof inner = {
+      ...inner,
+      async vault(method, authorization, body) {
+        const before = method === 'PUT' ? await sales() : [];
+        const res = await inner.vault(method, authorization, body);
+        if (method === 'PUT' && res.status === 200) {
+          const after = await sales();
+          const lost = before.filter((m) => !after.includes(m));
+          if (lost.length) dropped.push(lost);
+        }
+        if (method === 'GET') onRead?.();
+        return res;
+      },
+    };
+    const till = await Register.open(keys, MINT, env);
+    await till.charge(5, 'till');
+    await till.flush();
+    const phone = await Register.open(keys, MINT, device(server));
+
+    for (let round = 0; round < 5; round++) {
+      await phone.charge(5, `phone ${round}`);
+      await phone.flush();
+      // The till changes something at the instant its read comes back.
+      onRead = () => {
+        onRead = null;
+        till.setFiat(round % 2 ? 'EUR' : null);
+      };
+      await till.pull();
+      await till.flush();
+      await phone.pull();
+      await phone.flush();
+    }
+    expect(dropped).toEqual([]);
+    expect(await sales()).toHaveLength(6);
+    expect(till.state.sales).toHaveLength(6);
+    expect(till.sync).toBe('synced');
   }, 240_000);
 });

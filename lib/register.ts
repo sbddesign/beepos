@@ -96,6 +96,7 @@ export class Register {
   private listeners = new Set<() => void>();
   private dirty = false;
   private pushing: Promise<void> | null = null;
+  private io: Promise<unknown> = Promise.resolve();
   private settling = new Map<string, Promise<Sale>>();
   /** Lightning cash-outs this tab is asking the mint to pay right now. */
   private melting = new Set<string>();
@@ -190,16 +191,28 @@ export class Register {
     let attempts = 0;
     while (this.dirty && attempts++ < 8) {
       this.dirty = false;
-      await this.pushOnce();
+      await this.exclusive(() => this.pushOnce());
     }
+  }
+
+  /**
+   * One vault exchange at a time. A write's snapshot and the version it is based on
+   * are read together and stay paired until the server has answered, and a read is
+   * merged before anything else can build on its version.
+   */
+  private exclusive<T>(work: () => Promise<T>): Promise<T> {
+    const run = this.io.then(work, work);
+    this.io = run.catch(() => {});
+    return run;
   }
 
   private async pushOnce() {
     const snapshot = this.state;
+    const base = this.version;
     const blob = await seal(this.keys.vaultKey, JSON.stringify(snapshot));
-    this.env.saveLocal(this.keys.accountId, JSON.stringify({ version: this.version, blob }));
+    this.env.saveLocal(this.keys.accountId, JSON.stringify({ version: base, blob }));
     if (this.sync === 'local') return;
-    const body = JSON.stringify({ baseVersion: this.version, blob });
+    const body = JSON.stringify({ baseVersion: base, blob });
     try {
       const res = await this.env.vault('PUT', signRequest(this.keys.authPrivkey, 'PUT', body), body);
       if (res.status === 200) {
@@ -207,7 +220,8 @@ export class Register {
         this.env.saveLocal(this.keys.accountId, JSON.stringify({ version: this.version, blob }));
         this.setSync('synced');
       } else if (res.status === 409) {
-        await this.absorb(res.body);
+        // The server's answer to our own write says exactly where it stands.
+        await this.absorb(res.body, true);
         this.dirty = true;
       } else if (res.status === 503) {
         this.setSync('local');
@@ -219,12 +233,23 @@ export class Register {
     }
   }
 
-  /** Merges a server record into the local state. */
-  private async absorb(record: VaultRecord) {
-    this.version = record.version;
-    if (!record.blob) return;
+  /**
+   * Merges a server record into the local state. The record is decrypted and
+   * checked first: one that cannot be read (damaged, or written by a newer
+   * beepos) throws and changes nothing, so the next write is refused by the
+   * server instead of replacing a copy this register never understood.
+   * Only after the merge does the register adopt the record's version.
+   */
+  private async absorb(record: VaultRecord, authoritative = false) {
+    // An answer older than what is already merged has nothing new in it.
+    if (!authoritative && record.version < this.version) return;
+    if (!record.blob) {
+      this.version = record.version;
+      return;
+    }
     const remote = parseState(await open(this.keys.vaultKey, record.blob), this.state.mintUrl);
     const merged = merge(this.state, remote);
+    this.version = record.version;
     if (!sameState(merged, this.state)) {
       this.state = merged;
       await this.syncCounters();
@@ -234,7 +259,11 @@ export class Register {
   }
 
   /** Fetches the server copy and merges it in. Safe to call any time. */
-  async pull(): Promise<void> {
+  pull(): Promise<void> {
+    return this.exclusive(() => this.pullOnce());
+  }
+
+  private async pullOnce(): Promise<void> {
     try {
       const res = await this.env.vault('GET', signRequest(this.keys.authPrivkey, 'GET', ''), '');
       if (res.status === 503) return this.setSync('local');
