@@ -1,0 +1,2 @@
+# The video sub-package is rendered by hand; only its output in public/video is deployed.
+/video
