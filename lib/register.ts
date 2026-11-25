@@ -97,6 +97,7 @@ export class Register {
   private dirty = false;
   private pushing: Promise<void> | null = null;
   private io: Promise<unknown> = Promise.resolve();
+  private local: Promise<void> = Promise.resolve();
   private settling = new Map<string, Promise<Sale>>();
   /** Lightning cash-outs this tab is asking the mint to pay right now. */
   private melting = new Set<string>();
@@ -175,7 +176,24 @@ export class Register {
 
   // ---- vault sync -------------------------------------------------------
 
+  /**
+   * Saves the current state on this device. Independent of the server: it never
+   * waits for a vault request, so a stalled connection cannot leave a sale or new
+   * ecash in memory only. Saves run in order and each seals the state as it is then.
+   */
+  private persist(): Promise<void> {
+    this.local = this.local
+      .then(async () => {
+        const version = this.version;
+        const blob = await seal(this.keys.vaultKey, JSON.stringify(this.state));
+        this.env.saveLocal(this.keys.accountId, JSON.stringify({ version, blob }));
+      })
+      .catch(() => {});
+    return this.local;
+  }
+
   private schedulePush() {
+    void this.persist();
     this.dirty = true;
     this.pushing ??= this.pushLoop().finally(() => {
       this.pushing = null;
@@ -185,6 +203,7 @@ export class Register {
   /** Resolves when every change made so far is stored (or the push failed). */
   async flush(): Promise<void> {
     while (this.pushing) await this.pushing;
+    await this.local;
   }
 
   private async pushLoop() {
@@ -209,15 +228,14 @@ export class Register {
   private async pushOnce() {
     const snapshot = this.state;
     const base = this.version;
-    const blob = await seal(this.keys.vaultKey, JSON.stringify(snapshot));
-    this.env.saveLocal(this.keys.accountId, JSON.stringify({ version: base, blob }));
     if (this.sync === 'local') return;
+    const blob = await seal(this.keys.vaultKey, JSON.stringify(snapshot));
     const body = JSON.stringify({ baseVersion: base, blob });
     try {
       const res = await this.env.vault('PUT', signRequest(this.keys.authPrivkey, 'PUT', body), body);
       if (res.status === 200) {
         this.version = res.body.version;
-        this.env.saveLocal(this.keys.accountId, JSON.stringify({ version: this.version, blob }));
+        void this.persist();
         this.setSync('synced');
       } else if (res.status === 409) {
         // The server's answer to our own write says exactly where it stands.
@@ -245,11 +263,13 @@ export class Register {
     if (!authoritative && record.version < this.version) return;
     if (!record.blob) {
       this.version = record.version;
+      void this.persist();
       return;
     }
     const remote = parseState(await open(this.keys.vaultKey, record.blob), this.state.mintUrl);
     const merged = merge(this.state, remote);
     this.version = record.version;
+    void this.persist();
     if (!sameState(merged, this.state)) {
       this.state = merged;
       await this.syncCounters();
@@ -734,6 +754,8 @@ export class Register {
   }
 }
 
+const VAULT_TIMEOUT_MS = 20_000;
+
 /** The real environment: localStorage and the app's own /api/vault. */
 export const browserEnv: RegisterEnv = {
   loadLocal: (accountId) => localStorage.getItem(`beepos:vault:${accountId}`),
@@ -744,6 +766,8 @@ export const browserEnv: RegisterEnv = {
       headers: { Authorization: authorization, 'Content-Type': 'application/json' },
       body: method === 'PUT' ? body : undefined,
       cache: 'no-store',
+      // A request that hangs must not hold up the ones behind it for ever.
+      signal: AbortSignal.timeout(VAULT_TIMEOUT_MS),
     });
     return { status: res.status, body: await res.json() };
   },

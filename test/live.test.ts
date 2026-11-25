@@ -387,4 +387,43 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
     expect(till.state.sales).toHaveLength(6);
     expect(till.sync).toBe('synced');
   }, 240_000);
+
+  it('saves on this device while a read from the server is stalled (#16)', async () => {
+    const keys = deriveKeys(crypto.getRandomValues(new Uint8Array(32)));
+    const inner = device(new MemoryVaultStore());
+    let stall: Promise<void> | null = null;
+    const env: typeof inner = {
+      ...inner,
+      async vault(method, authorization, body) {
+        if (method === 'GET' && stall) await stall;
+        return inner.vault(method, authorization, body);
+      },
+    };
+    const till = await Register.open(keys, MINT, env);
+    await till.flush();
+    const savedMemos = async () => {
+      const saved = env.loadLocal(keys.accountId);
+      if (!saved) return [];
+      return parseState(await open(keys.vaultKey, JSON.parse(saved).blob), MINT).sales.map((x) => x.memo);
+    };
+
+    let release!: () => void;
+    stall = new Promise((r) => (release = r));
+    const reading = till.pull();
+    await till.charge(5, 'during the stall');
+    // The sale has to reach local storage without the read ever finishing.
+    for (let i = 0; i < 40 && !(await savedMemos()).length; i++) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    expect(await savedMemos()).toEqual(['during the stall']);
+    // A register opened from that local copy alone has the sale.
+    const offline: typeof inner = { ...inner, vault: async () => ({ status: 503, body: { version: 0, blob: null } }) };
+    expect((await Register.open(keys, MINT, offline)).state.sales).toHaveLength(1);
+
+    release();
+    stall = null;
+    await reading;
+    await till.flush();
+    expect(till.sync).toBe('synced');
+  }, 240_000);
 });
