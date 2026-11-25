@@ -68,7 +68,7 @@ There are four. Pick one; do not invent a fifth.
 | Material | Where | Recipe |
 | --- | --- | --- |
 | **Frosted glass** | Bar, lock card, invoice and Paid cards, memo field | `--frost` (62% ink tint under a faint white gradient) with `--frost-filter` (`blur(22px) saturate(1.25)`), `--line` border, `--bevel` |
-| **Deep frost** | The register panel | 70% ink tint, `blur(30px) saturate(1.25)` |
+| **Deep frost** | The register drawer | 70% ink tint, `blur(30px) saturate(1.25)` |
 | **Clear glass** | The twelve keys, secondary buttons | No blur. Keys: 22% ink tint, bright top bevel, drop shadow. Buttons: 4% white |
 | **Amber glass** | Primary button only | Amber gradient at 0.9 to 0.96 alpha, bright rim, amber glow underneath, `--accent-ink` text |
 
@@ -120,6 +120,7 @@ No context, a failed compile or a lost context adds `.no-liquid` to `<html>`, hi
 | **Key press ripple** | Pointer down on any `.key` or `.btn`, or a digit / Backspace on a keyboard | A ring spreads through the liquid from the centre of the control, lasting 2.6 s. Up to 8 at once |
 | **Key press, the slab** | `:active` | Sinks 3px, scales to 0.985, rim turns amber, instantly. Released over 90 ms. Keys also `navigator.vibrate(8)` where supported |
 | **Waiting pulse** | Invoice screen | Amber dot, 1.2 s opacity pulse |
+| **Drawer** | Opening the register | Slides in from the right, 240 ms, while the scrim fades in. Closing is immediate |
 | **Paid check** | Paid screen | Green glass disc scales up from 0.6 with a slight overshoot, 0.7 s |
 | **Amount parallax** | Tilt | The keypad amount shifts up to 3px with the tilt |
 
@@ -135,7 +136,7 @@ With `prefers-reduced-motion: reduce`:
 
 - The liquid is **one still frame**. No drift, no tilt (both variables are held at 0), no ripples, no breathing.
 - Paid is a plain change of colour to the calm green state, with no wave.
-- The waiting pulse and the check animation are off, and buttons and keys have no transitions.
+- The waiting pulse and the check animation are off, the drawer appears without sliding, and buttons and keys have no transitions.
 - Nothing is hidden or removed. Every state is still told apart by text.
 
 ## The QR code rule
@@ -144,21 +145,31 @@ With `prefers-reduced-motion: reduce`:
 
 ## Layout
 
-The app is a full-height column (`100dvh`) with safe-area padding: a frosted **bar** on top, **panes** below.
+The app is a full-height column (`100dvh`) with safe-area padding: a frosted **bar** on top, one **pane** below. The layout is the same at every width; there are no breakpoints.
 
-- **Keypad** (`.keypad-view`): at most 26rem wide, centred. Top to bottom: amount, hint line, memo, the 3×4 key grid, Charge. The amount is pushed down toward the keys so the thumb zone holds everything that is pressed. The grid is between 15rem and 24rem tall.
+- **Bar:** the name on the left, one button on the right. Nothing else.
+- **Keypad** (`.keypad-view`): at most 26rem wide and 46rem tall, centred in both directions. Top to bottom: amount, hint line, memo, the 3×4 key grid, Charge. The amount is pushed down toward the keys so the thumb zone holds everything that is pressed. The grid is between 15rem and 24rem tall.
 - **Invoice and Paid** (`.center-view`): a frosted card, at most 26rem wide, centred in both directions.
 - **Lock** (`.lock-card`): a frosted card, at most 22rem wide, centred.
-- **Register** (`.wallet`): a column at most 30rem wide inside the side pane.
 
-One breakpoint, **900px**:
+### The home shows the sale and nothing else
 
-| Width | Register |
+The keypad, invoice and Paid screens show only the sale in front of you. The drawer total, the activity list and the seed words are **not in the page** until the owner opens the register: not hidden with CSS, not in an accessible label, not in a tooltip. Any new screen that a customer can see follows the same rule.
+
+### The register drawer
+
+The header button (`.till-btn`) is a pill of clear glass holding the sync dot and a till icon. Its label is "Open the register". It never shows or reads out an amount.
+
+Tapping it opens the **drawer** (`.drawer`), a modal `<dialog>` in deep frost that slides in from the right over 240 ms:
+
+| Width | Drawer |
 | --- | --- |
-| Under 900px | Hidden. Tapping the header button opens it as a full-screen sheet over the keypad, closed with **Done** |
-| 900px and up | Always visible beside the keypad as a 24rem column |
+| Up to 26rem | The whole screen |
+| Wider | A 26rem column on the right edge; the till beside it is dimmed by a 50% ink scrim |
 
-> **Known conflict with PRODUCT.md.** As shipped, the bar shows the drawer total at every width and the register is always open from 900px. That breaks "the customer-facing screen shows nothing private". Issue #5 replaces this section: the home is the keypad alone at every width, and the register opens only from a header button that shows no amount.
+Inside, top to bottom: the **Register** title and **Done**, the total, the sync line, then Cash out, Backup and Lock, then **Activity**, then **Settings**. New per-register settings go in the Settings section, one row each (label on the left, value or control on the right).
+
+The drawer closes with Done, Escape, or a tap on the scrim, and focus returns to the header button. It is closed when the register is unlocked and whenever a sale starts. While it is open the till behind it cannot be pressed and the keyboard does not type into the keypad. Closing it removes it from the page, so it always reopens on the list.
 
 ## Controls and states
 

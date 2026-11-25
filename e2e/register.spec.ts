@@ -37,12 +37,26 @@ async function sell(page: Page, digits: string, memo: string) {
   });
 }
 
+const HOME_BUTTON = 'Open the register';
+
 async function openRegister(page: Page) {
-  const done = page.getByRole('button', { name: 'Done' });
-  if (!(await page.getByTestId('wallet-balance').isVisible())) {
-    await page.getByTestId('balance').click();
-  }
-  return done;
+  await page.getByRole('button', { name: HOME_BUTTON }).click();
+  await expect(page.getByTestId('wallet-balance')).toBeVisible();
+}
+
+// Nobody looking at the till can learn what the drawer holds: not on screen, not
+// in the page behind it, not in what a screen reader says.
+async function expectNoTotal(page: Page, total: string) {
+  await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const seen = await page.evaluate(() => {
+    const attrs = [...document.querySelectorAll('*')].flatMap((el) =>
+      ['aria-label', 'title', 'value', 'placeholder', 'alt'].map((a) => el.getAttribute(a) ?? ''),
+    );
+    return [document.body.innerText, document.body.textContent, document.title, ...attrs].join('\n');
+  });
+  expect(seen).not.toContain(total);
+  expect(seen).not.toContain(total.replace(/\D/g, ''));
 }
 
 test('create a passkey, take a payment, and open the register on a second device', async ({
@@ -67,27 +81,50 @@ test('create a passkey, take a payment, and open the register on a second device
   await sell(page, '2100', 'Flat white');
   await expect(page.getByTestId('invoice-amount')).toHaveText('₿2,100');
   expect(await page.getByTestId('invoice').inputValue()).toMatch(/^lnbc21u/);
+  await expect(page.locator('header').getByRole('button')).toHaveCount(1);
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await shot('2-invoice');
 
   // The test mint pays the invoice by itself.
   await expect(page.getByRole('status').filter({ hasText: 'Paid' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
   await shot('3-paid');
   await page.getByRole('button', { name: 'New sale' }).click();
-  await expect(page.getByTestId('balance')).toHaveText('₿2,100', { timeout: OPEN });
   await expect(page.getByTestId('amount')).toHaveText('₿0');
+  // The header is the name and one button, and the home says nothing about the drawer.
+  await expect(page.locator('header').getByRole('button')).toHaveCount(1);
+  await expect(page.locator('header')).toHaveText('beepos');
+  await expectNoTotal(page, '₿2,100');
   await shot('4-keypad');
+
+  // The total is behind the button. Escape or Done puts it away again.
+  await openRegister(page);
+  await expect(page.getByTestId('wallet-balance')).toHaveText('₿2,100', { timeout: OPEN });
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  // With the register open, typing does not ring up a sale behind it.
+  await page.keyboard.press('7');
+  await page.keyboard.press('Escape');
+  await expectNoTotal(page, '₿2,100');
+  await expect(page.getByTestId('amount')).toHaveText('₿0');
+  await expect(page.getByRole('button', { name: HOME_BUTTON })).toBeFocused();
 
   // A reload keeps the session; locking asks for the passkey again.
   await page.reload();
-  await expect(page.getByTestId('balance')).toHaveText('₿2,100', { timeout: OPEN });
+  await expect(page.getByTestId('amount')).toHaveText('₿0', { timeout: OPEN });
+  await expectNoTotal(page, '₿2,100');
   await openRegister(page);
+  await expect(page.getByTestId('wallet-balance')).toHaveText('₿2,100', { timeout: OPEN });
   await expect(page.getByText('Flat white')).toBeVisible();
   await expect(page.getByText('+₿2,100')).toBeVisible();
   await expect(page.getByText('Any device with your passkey can open this register')).toBeVisible();
+  await page.waitForTimeout(400); // let the drawer finish sliding in before the picture
   await shot('5-register');
   await page.getByRole('button', { name: 'Lock' }).click();
   await page.getByRole('button', { name: 'Unlock with passkey' }).click();
-  await expect(page.getByTestId('balance')).toHaveText('₿2,100', { timeout: OPEN });
+  // Unlocking lands on the keypad with the drawer shut.
+  await expect(page.getByTestId('amount')).toHaveText('₿0', { timeout: OPEN });
+  await expectNoTotal(page, '₿2,100');
 
   // Second device: nothing but the passkey. A wiped browser stands in for it,
   // so the sale has to come back from the vault server.
@@ -97,8 +134,9 @@ test('create a passkey, take a payment, and open the register on a second device
   });
   await page.reload();
   await page.getByRole('button', { name: 'I already have a passkey' }).click();
-  await expect(page.getByTestId('balance')).toHaveText('₿2,100', { timeout: OPEN });
+  await expect(page.getByTestId('amount')).toHaveText('₿0', { timeout: OPEN });
   await openRegister(page);
+  await expect(page.getByTestId('wallet-balance')).toHaveText('₿2,100', { timeout: OPEN });
   await expect(page.getByText('Flat white')).toBeVisible();
 
   // Cash out to a token.
