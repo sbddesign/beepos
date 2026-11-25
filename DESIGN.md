@@ -14,6 +14,10 @@ Three rules follow from that:
 2. **The liquid answers the till.** It ripples under a pressed key, breathes while an invoice waits, and floods green-gold when it is paid. It never moves for decoration alone.
 3. **Amber is scarce.** One warm, solid thing per screen: the primary action. Everything else is clear or frosted.
 
+## The mark
+
+`public/icon.svg` is the only logo file: favicon, home-screen icon (through the manifest) and the lock screen all use it. It is an amber (`#f5b700`) hexagon on an ink (`#04121c`) rounded square, with two ink bars across it. Everything is rounded to sit with the glass: the hexagon's corners have a radius of 4 on the 64 grid and the bars are pills. Do not redraw it with sharp corners, add a gradient, or set it on a colour other than ink.
+
 ## Colour
 
 Tokens in `:root` (`app/globals.css`):
