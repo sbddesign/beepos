@@ -46,19 +46,21 @@ const vis = (f: number, a: number, b: number) => Math.min(ramp(f, a, a + 10), 1 
 // ---- the timeline -------------------------------------------------------
 
 type Tap = { f: number; sel: string; at?: [number, number]; quiet?: boolean };
+// The music is 100 BPM and its downbeats fall on frames 5 + 18n (see README).
+// Touches sit on those beats, and PAID_AT is the track's big lift.
 /** Every touch in the film. Each one presses its control and rings the liquid. */
 const TAPS: Tap[] = [
   { f: 20, sel: '', at: [W / 2, H / 2], quiet: true },
-  { f: 170, sel: 'p:create' },
-  { f: 345, sel: 'p:key-1' },
-  { f: 372, sel: 'p:key-2' },
-  { f: 399, sel: 'p:key-5' },
-  { f: 426, sel: 'p:key-0' },
-  { f: 486, sel: 'p:charge' },
-  { f: 690, sel: 'p:preset-Oat latte' },
-  { f: 750, sel: 'p:charge', at: [1340, 968] },
+  { f: 167, sel: 'p:create' },
+  { f: 347, sel: 'p:key-1' },
+  { f: 383, sel: 'p:key-2' },
+  { f: 419, sel: 'p:key-5' },
+  { f: 455, sel: 'p:key-0' },
+  { f: 491, sel: 'p:charge' },
+  { f: 689, sel: 'p:preset-Oat latte' },
+  { f: 761, sel: 'p:charge', at: [1340, 968] },
   { f: 1190, sel: '', at: [1255, 540], quiet: true },
-  { f: 1310, sel: 't:till' },
+  { f: 1301, sel: 't:till' },
   { f: 1462, sel: '', at: [W / 2, H / 2], quiet: true },
 ];
 const DRAG = { from: 610, to: 650, sel: 'p:presets', dx: -270 };
@@ -487,13 +489,13 @@ export function Film({ music, at }: { music: string | null; at?: number }) {
   });
 
   // -- phone ----------------------------------------------------------------
-  const typed = ['1', '2', '5', '0'].filter((_, i) => f >= [345, 372, 399, 426][i]).join('');
+  const typed = ['1', '2', '5', '0'].filter((_, i) => f >= [347, 383, 419, 455][i]).join('');
   const inShot3 = f < 520;
   // After the sale is paid the phone is back on an empty keypad.
-  const picked = !inShot3 && f >= 690 && f < PAID_AT;
+  const picked = !inShot3 && f >= 689 && f < PAID_AT;
   const cents = inShot3 ? Number(typed || '0') : picked ? 525 : 0;
   const memo = picked ? 'Oat latte' : '';
-  const busy = (f >= 486 && f < 520) || (f >= 750 && f < 790);
+  const busy = (f >= 491 && f < 520) || (f >= 761 && f < 790);
   const scroll = DRAG.dx * ramp(f, DRAG.from, DRAG.to);
   const sale = 525;
 
@@ -514,7 +516,7 @@ export function Film({ music, at }: { music: string | null; at?: number }) {
     opacity: Math.min(ramp(f, 805, 835), 1 - ramp(f, 965, 1000)),
   };
   const sheet = Math.min(ramp(f, 176, 192), 1 - ramp(f, 236, 248));
-  const drawer = ramp(f, 1316, 1334);
+  const drawer = ramp(f, 1307, 1325);
   const glow = 0.5 + 0.5 * Math.sin((f - 1360) / 9);
   const end = ramp(f, 1458, 1490);
 

@@ -24,7 +24,17 @@ A 1080p master is kept in `video/out/` (not committed). A render takes several m
 
 ## Music
 
-Put the track at `video/public/music.mp3` and run `npm run render` again. The film fades it in and out. With no file there, the film is silent.
+The track is `video/public/music.mp3`, cut from "Precision Lift" (made by the owner with Suno, 100 BPM). `npm run render` picks it up and fades it in and out. Delete the file and the film renders silent.
+
+The cut skips 11 bars so the song's quiet break sits under the invoice and its lift lands on **Paid** at 0:30:
+
+```sh
+ffmpeg -i "Precision Lift.wav" -filter_complex \
+  "[0:a]atrim=1.13:24.10,asetpts=PTS-STARTPTS[a];[0:a]atrim=50.46:84,asetpts=PTS-STARTPTS[b];[a][b]acrossfade=d=0.04:c1=tri:c2=tri" \
+  -b:a 192k video/public/music.mp3
+```
+
+With this cut the beats fall on frames 5, 23, 41 and so on (every 18 frames). The taps in `TAPS` sit on those frames. For a different track, change the cut and move the taps and `PAID_AT`.
 
 ## Edit
 
