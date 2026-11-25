@@ -97,7 +97,7 @@ export class Register {
   private dirty = false;
   private pushing: Promise<void> | null = null;
   private io: Promise<unknown> = Promise.resolve();
-  private local: Promise<void> = Promise.resolve();
+  private local: Promise<unknown> = Promise.resolve();
   private settling = new Map<string, Promise<Sale>>();
   /** Lightning cash-outs this tab is asking the mint to pay right now. */
   private melting = new Set<string>();
@@ -180,16 +180,22 @@ export class Register {
    * Saves the current state on this device. Independent of the server: it never
    * waits for a vault request, so a stalled connection cannot leave a sale or new
    * ecash in memory only. Saves run in order and each seals the state as it is then.
+   * Resolves true when this save was written, false when the device refused it
+   * (storage full or switched off).
    */
-  private persist(): Promise<void> {
-    this.local = this.local
-      .then(async () => {
+  private persist(): Promise<boolean> {
+    const saved = this.local.then(async () => {
+      try {
         const version = this.version;
         const blob = await seal(this.keys.vaultKey, JSON.stringify(this.state));
         this.env.saveLocal(this.keys.accountId, JSON.stringify({ version, blob }));
-      })
-      .catch(() => {});
-    return this.local;
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    this.local = saved;
+    return saved;
   }
 
   private schedulePush() {
@@ -594,6 +600,13 @@ export class Register {
     if (quote.expiry * 1000 < Date.now()) throw new Error('That quote expired. Check the cost again.');
     if (need > this.balance) throw new Error('Not enough in the register for the amount and the fee reserve.');
     if (this.state.payouts.some((p) => p.id === quote.id)) throw new Error('That payment was already started.');
+    // Nowhere to save right now (device storage refuses, server unreachable): stop
+    // before any ecash is touched.
+    if (!(await this.persist())) {
+      await this.pull();
+      await this.flush();
+      if (!(this.sync === 'synced' && !this.dirty)) throw new Error(UNSAVED);
+    }
     redeem(approval, this.keys);
 
     // Swap for ecash worth exactly the amount, the reserve and the mint's input fee.
@@ -627,8 +640,20 @@ export class Register {
       };
     });
     this.melting.add(quote.id);
+    // The record of what was set aside must be written somewhere that survives this
+    // tab, on this device or on the server, before the mint is asked to pay.
+    const savedHere = await this.persist();
+    await this.flush();
+    if (!savedHere && !(this.sync === 'synced' && !this.dirty)) {
+      this.melting.delete(quote.id);
+      this.commit((s) => ({
+        ...s,
+        proofs: dedupe([...s.proofs, ...aside]).filter((p) => !s.spent.includes(p.secret)),
+        payouts: s.payouts.filter((p) => p.id !== quote.id),
+      }));
+      throw new Error(UNSAVED);
+    }
     try {
-      await this.flush();
       const res =
         quote.method === 'bolt12'
           ? await this.wallet.meltProofsBolt12(quote.raw, send)
@@ -755,6 +780,8 @@ export class Register {
 }
 
 const VAULT_TIMEOUT_MS = 20_000;
+const UNSAVED =
+  'Could not save the payment record on this device or the backup server, so nothing was paid.';
 
 /** The real environment: localStorage and the app's own /api/vault. */
 export const browserEnv: RegisterEnv = {

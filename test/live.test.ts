@@ -4,8 +4,7 @@ import { deriveKeys } from '@/lib/keys';
 import { approve } from '@/lib/reauth';
 import { Register, type RegisterEnv } from '@/lib/register';
 import { verifyRequest } from '@/lib/vault-auth';
-import { balance, merge } from '@/lib/state';
-import { parseState } from '@/lib/state';
+import { balance, merge, parseState } from '@/lib/state';
 import { open, seal } from '@/lib/vault-crypto';
 import { MemoryVaultStore } from '@/lib/vault-store';
 
@@ -174,9 +173,13 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
 
     // The tab dies after the ecash is set aside and before the mint is asked to pay.
     const melt = till.wallet.meltProofsBolt11.bind(till.wallet);
-    till.wallet.meltProofsBolt11 = async () => new Promise(() => {});
+    let reached = false;
+    till.wallet.meltProofsBolt11 = async () => {
+      reached = true;
+      return new Promise(() => {});
+    };
     void till.payOut(quote, await approve(keys, async () => prf));
-    for (let i = 0; i < 100 && !till.state.payouts.length; i++) {
+    for (let i = 0; i < 100 && !reached; i++) {
       await new Promise((r) => setTimeout(r, 100));
     }
     await till.flush();
@@ -298,6 +301,8 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
     // Taking it back still works.
     await phone.reclaim(cashout.id);
     expect(phone.balance).toBeGreaterThanOrEqual(after + 18);
+  }, 240_000);
+
   it('never writes over a server copy it could not read (#16)', async () => {
     const keys = deriveKeys(crypto.getRandomValues(new Uint8Array(32)));
     const server = new MemoryVaultStore();
@@ -425,5 +430,57 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
     await reading;
     await till.flush();
     expect(till.sync).toBe('synced');
+  }, 240_000);
+
+  it('does not pay out when the record of it could be saved nowhere (#16)', async () => {
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const keys = deriveKeys(prf);
+    const inner = device(new MemoryVaultStore());
+    let diskFull = false;
+    let serverDown = false;
+    const env: typeof inner = {
+      ...inner,
+      saveLocal(id, value) {
+        if (diskFull) throw new Error('QuotaExceededError');
+        inner.saveLocal(id, value);
+      },
+      async vault(method, authorization, body) {
+        if (serverDown) throw new TypeError('Failed to fetch');
+        return inner.vault(method, authorization, body);
+      },
+    };
+    const till = await Register.open(keys, MINT, env);
+    await untilPaid(till, (await till.charge(100, '')).id);
+    await till.flush();
+    const other = await Register.open(
+      deriveKeys(crypto.getRandomValues(new Uint8Array(32))),
+      MINT,
+      device(null),
+    );
+    const bill = async () => parseDestination((await other.charge(30, '')).request)!;
+    const melt = till.wallet.meltProofsBolt11.bind(till.wallet);
+    let asked = 0;
+    till.wallet.meltProofsBolt11 = async (...args) => {
+      asked++;
+      return melt(...args);
+    };
+
+    // Nowhere to save: refused before the mint is asked, and the ecash is back.
+    diskFull = serverDown = true;
+    const quote = await till.quotePayout(await bill());
+    const before = till.state;
+    await expect(till.payOut(quote, await approve(keys, async () => prf))).rejects.toThrow(
+      'nothing was paid',
+    );
+    expect(asked).toBe(0);
+    expect(till.state.payouts).toHaveLength(0);
+    expect(till.state).toBe(before); // no swap, no ecash moved
+    expect(till.balance).toBe(100);
+
+    // The server alone is enough.
+    serverDown = false;
+    const paid = await till.payOut(await till.quotePayout(await bill()), await approve(keys, async () => prf));
+    expect(paid.status).toBe('paid');
+    expect(asked).toBe(1);
   }, 240_000);
 });
