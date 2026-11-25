@@ -182,9 +182,22 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
     expect(during).toBeLessThanOrEqual(100 - 40 - quote.feeReserve);
     till.wallet.meltProofsBolt11 = melt;
 
-    // Reopened on another device: the mint says unpaid, so the ecash returns.
+    // Reopened on another device. The mint says unpaid, but the first device may
+    // still be about to ask, so the ecash stays set aside: through a settle, a
+    // restore from the seed, and a merge with the server copy.
     const phone = await Register.open(keys, MINT, device(server));
     expect(phone.balance).toBe(during);
+    await phone.settlePayouts();
+    expect(phone.state.payouts[0].status).toBe('pending');
+    expect(await phone.recover()).toBe(during);
+    await phone.pull();
+    expect(phone.balance).toBe(during);
+
+    // Once the quote has run out nobody can pay it any more, and the ecash returns.
+    phone.state = {
+      ...phone.state,
+      payouts: phone.state.payouts.map((p) => ({ ...p, expiry: Math.floor(Date.now() / 1000) - 600 })),
+    };
     await phone.settlePayouts();
     expect(phone.state.payouts[0]).toMatchObject({ status: 'failed', inputs: [] });
     expect(phone.balance).toBeGreaterThanOrEqual(96); // 100 less the test mint's swap fee
@@ -212,5 +225,45 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
     expect(paid.status).toBe('paid');
     expect(till.balance).toBeLessThanOrEqual(70);
     expect(till.balance).toBeGreaterThanOrEqual(70 - quote.feeReserve - 4);
+  }, 240_000);
+
+  it('a check that runs while the payment is being sent does not write it off', async () => {
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const keys = deriveKeys(prf);
+    const server = new MemoryVaultStore();
+    const till = await Register.open(keys, MINT, device(server));
+    await untilPaid(till, (await till.charge(100, '')).id);
+    const other = await Register.open(
+      deriveKeys(crypto.getRandomValues(new Uint8Array(32))),
+      MINT,
+      device(null),
+    );
+    const quote = await till.quotePayout(parseDestination((await other.charge(40, '')).request)!);
+
+    // Just before the mint is asked: this tab's timer and a second device both look.
+    const melt = till.wallet.meltProofsBolt11.bind(till.wallet);
+    let phone!: Register;
+    till.wallet.meltProofsBolt11 = async (...args) => {
+      await till.settlePayouts();
+      phone = await Register.open(keys, MINT, device(server));
+      await phone.settlePayouts();
+      await phone.recover();
+      await phone.flush();
+      expect(phone.state.payouts[0].status).toBe('pending');
+      return melt(...args);
+    };
+    const paid = await till.payOut(quote, await approve(keys, async () => prf));
+    expect(paid.status).toBe('paid');
+    // After the mint has paid, the second device (still holding "pending") asks and agrees.
+    await phone.settlePayouts();
+    expect(phone.state.payouts[0]).toMatchObject({ status: 'paid', inputs: [] });
+    await till.flush();
+    await phone.pull();
+    await phone.flush();
+    await till.pull();
+    expect(till.state.payouts[0].status).toBe('paid');
+    expect(phone.balance).toBe(till.balance);
+    const fresh = await Register.open(keys, MINT, device(null));
+    expect(await fresh.recover()).toBe(till.balance);
   }, 240_000);
 });

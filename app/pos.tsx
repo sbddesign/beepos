@@ -756,7 +756,7 @@ function WalletPanel({
               setMode('list');
               return payout.status === 'paid'
                 ? `Paid ${formatBitcoin(payout.amount)} to ${payout.to}.`
-                : 'Sent. The mint has not confirmed it yet; Activity will show how it ends.';
+                : 'Not confirmed yet. The money for it stays set aside until the mint answers; Activity will show how it ends.';
             })
           }
           onToken={(amount) =>

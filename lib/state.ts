@@ -107,13 +107,26 @@ function mergeById<T extends { id: string; createdAt: number }>(
   return [...byId.values()].sort((x, y) => x.createdAt - y.createdAt).slice(-MAX_HISTORY);
 }
 
+/** Secrets of ecash set aside for Lightning cash-outs that have not ended. Not spendable. */
+export function reserved(payouts: Payout[]): Set<string> {
+  return new Set(
+    payouts.filter((p) => p.status === 'pending').flatMap((p) => p.inputs.map((i) => i.secret)),
+  );
+}
+
 /** Combines two copies of the state. Commutative, and merge(a, a) equals a. */
 export function merge(a: RegisterState, b: RegisterState): RegisterState {
   const spent = [...new Set([...a.spent, ...b.spent])].slice(-MAX_SPENT);
   const gone = new Set(spent);
+  // Payouts first: ecash a pending payout holds must not come back as spendable
+  // from a copy that predates the payout.
+  const payouts = mergeById(a.payouts, b.payouts, (x, y) =>
+    PAYOUT_RANK[y.status] > PAYOUT_RANK[x.status] ? y : x,
+  );
+  const held = reserved(payouts);
   const proofs = new Map<string, StoredProof>();
   for (const p of [...a.proofs, ...b.proofs]) {
-    if (!gone.has(p.secret)) proofs.set(p.secret, p);
+    if (!gone.has(p.secret) && !held.has(p.secret)) proofs.set(p.secret, p);
   }
   const counters: Record<string, number> = { ...a.counters };
   for (const [id, n] of Object.entries(b.counters)) {
@@ -131,9 +144,7 @@ export function merge(a: RegisterState, b: RegisterState): RegisterState {
     cashouts: mergeById(a.cashouts, b.cashouts, (x, y) =>
       CASHOUT_RANK[y.status] > CASHOUT_RANK[x.status] ? y : x,
     ),
-    payouts: mergeById(a.payouts, b.payouts, (x, y) =>
-      PAYOUT_RANK[y.status] > PAYOUT_RANK[x.status] ? y : x,
-    ),
+    payouts,
   };
 }
 

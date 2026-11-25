@@ -176,6 +176,17 @@ describe('Lightning cash-outs in the register state', () => {
     expect(parseState(JSON.stringify(old), 'm').payouts).toEqual([]);
   });
 
+  it('ecash set aside for a pending payment is not spendable, whatever an older copy says', () => {
+    // The payment took proofs the register already had, so a copy saved before it still lists them.
+    const paying = state({ proofs: [proof('c')], payouts: [payout({})] });
+    const older = state({ proofs: [proof('a', 8), proof('b', 4), proof('c')] });
+    for (const merged of [merge(paying, older), merge(older, paying)]) {
+      expect(merged.proofs.map((p) => p.secret)).toEqual(['c']);
+      expect(merged.payouts[0].inputs.map((p) => p.secret)).toEqual(['a', 'b']);
+    }
+    expect(merge(paying, paying)).toEqual(merge(paying, older));
+  });
+
   it('a payment that failed on one device gives the ecash back on both', () => {
     const waiting = state({ payouts: [payout({})] });
     const failed = state({
