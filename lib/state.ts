@@ -39,6 +39,33 @@ export type Cashout = {
   status: CashoutStatus;
 };
 
+export type PayoutStatus = 'pending' | 'failed' | 'paid';
+
+/** A cash-out paid over Lightning by the mint (a melt, NUT-05). */
+export type Payout = {
+  /** Melt quote id. */
+  id: string;
+  method: 'bolt11' | 'bolt12';
+  /** What the owner entered: a Lightning address, or the start of an invoice or offer. */
+  to: string;
+  /** Amount the recipient gets. */
+  amount: number;
+  /** The most the mint may keep for routing. Unused reserve comes back as change. */
+  feeReserve: number;
+  createdAt: number;
+  /** Unix seconds, from the mint. */
+  expiry: number;
+  status: PayoutStatus;
+  /**
+   * Ecash set aside for this payment. Out of `proofs` so nothing else spends it,
+   * kept here so it returns to the register if the payment fails. Empty once settled.
+   */
+  inputs: StoredProof[];
+  /** What it cost on top of `amount`, when known. */
+  fee?: number;
+  paidAt?: number;
+};
+
 export type RegisterState = {
   v: 1;
   mintUrl: string;
@@ -49,13 +76,14 @@ export type RegisterState = {
   spent: string[];
   sales: Sale[];
   cashouts: Cashout[];
+  payouts: Payout[];
 };
 
 const MAX_SPENT = 5000;
 const MAX_HISTORY = 500;
 
 export function emptyState(mintUrl: string): RegisterState {
-  return { v: 1, mintUrl, counters: {}, proofs: [], spent: [], sales: [], cashouts: [] };
+  return { v: 1, mintUrl, counters: {}, proofs: [], spent: [], sales: [], cashouts: [], payouts: [] };
 }
 
 export function balance(state: RegisterState): number {
@@ -64,6 +92,7 @@ export function balance(state: RegisterState): number {
 
 const SALE_RANK: Record<SaleStatus, number> = { pending: 0, expired: 1, paid: 2 };
 const CASHOUT_RANK: Record<CashoutStatus, number> = { out: 0, claimed: 1, reclaimed: 2 };
+const PAYOUT_RANK: Record<PayoutStatus, number> = { pending: 0, failed: 1, paid: 2 };
 
 function mergeById<T extends { id: string; createdAt: number }>(
   a: T[],
@@ -101,6 +130,9 @@ export function merge(a: RegisterState, b: RegisterState): RegisterState {
     ),
     cashouts: mergeById(a.cashouts, b.cashouts, (x, y) =>
       CASHOUT_RANK[y.status] > CASHOUT_RANK[x.status] ? y : x,
+    ),
+    payouts: mergeById(a.payouts, b.payouts, (x, y) =>
+      PAYOUT_RANK[y.status] > PAYOUT_RANK[x.status] ? y : x,
     ),
   };
 }

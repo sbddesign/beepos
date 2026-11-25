@@ -2,12 +2,13 @@
 
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { parseDestination, type Destination } from '@/lib/destination';
 import { formatBitcoin, timeAgo } from '@/lib/format';
 import { deriveKeys } from '@/lib/keys';
 import { PasskeyError, register as createPasskey, unlock } from '@/lib/passkey';
 import { approve } from '@/lib/reauth';
-import { Register, browserEnv } from '@/lib/register';
-import type { Cashout, Sale } from '@/lib/state';
+import { Register, browserEnv, type PayoutQuote } from '@/lib/register';
+import type { Cashout, Payout, Sale } from '@/lib/state';
 import { setMood } from './fx/liquid';
 import { Qr } from './qr';
 
@@ -158,9 +159,12 @@ function Till({ register: reg, onLock }: { register: Register; onLock: () => voi
   useEffect(() => {
     const tick = () => {
       if (document.visibilityState !== 'visible') return;
-      void register.pull().then(() => register.settlePending());
+      void register
+        .pull()
+        .then(() => Promise.all([register.settlePending(), register.settlePayouts()]));
     };
     void register.settlePending();
+    void register.settlePayouts();
     const timer = setInterval(tick, 20_000);
     document.addEventListener('visibilitychange', tick);
     return () => {
@@ -484,7 +488,8 @@ function Paid({ sale, onDone }: { sale: Sale; onDone: () => void }) {
 
 type Entry =
   | { kind: 'sale'; at: number; sale: Sale }
-  | { kind: 'cashout'; at: number; cashout: Cashout };
+  | { kind: 'cashout'; at: number; cashout: Cashout }
+  | { kind: 'payout'; at: number; payout: Payout };
 
 function WalletPanel({
   register,
@@ -497,6 +502,7 @@ function WalletPanel({
 }) {
   const [mode, setMode] = useState<'list' | 'cashout' | 'backup'>('list');
   const [token, setToken] = useState<Cashout | null>(null);
+  const [quote, setQuote] = useState<PayoutQuote | null>(null);
   const [words, setWords] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -536,9 +542,14 @@ function WalletPanel({
       at: cashout.createdAt,
       cashout,
     }));
-    return [...sales, ...outs].sort((a, b) => b.at - a.at).slice(0, 100);
+    const paid = register.state.payouts.map((payout) => ({
+      kind: 'payout' as const,
+      at: payout.paidAt ?? payout.createdAt,
+      payout,
+    }));
+    return [...sales, ...outs, ...paid].sort((a, b) => b.at - a.at).slice(0, 100);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [register.state.sales, register.state.cashouts]);
+  }, [register.state.sales, register.state.cashouts, register.state.payouts]);
 
   const act = async (work: () => Promise<string | void>) => {
     setBusy(true);
@@ -591,6 +602,7 @@ function WalletPanel({
               onClick={() => {
                 leave();
                 setToken(null);
+                setQuote(null);
                 setNote('');
                 setMode('cashout');
               }}
@@ -640,7 +652,7 @@ function WalletPanel({
                     {formatBitcoin(entry.sale.amount)}
                   </span>
                 </li>
-              ) : (
+              ) : entry.kind === 'cashout' ? (
                 <li key={entry.cashout.id}>
                   <span>
                     <strong>Cash out</strong>
@@ -684,6 +696,23 @@ function WalletPanel({
                     −{formatBitcoin(entry.cashout.amount)}
                   </span>
                 </li>
+              ) : (
+                <li key={entry.payout.id}>
+                  <span>
+                    <strong>Cash out to {entry.payout.to}</strong>
+                    <small>
+                      {entry.payout.status === 'pending' && 'Waiting for the mint to confirm'}
+                      {entry.payout.status === 'failed' && 'Not paid. The money came back'}
+                      {entry.payout.status === 'paid' &&
+                        `Paid · ${timeAgo(entry.at)}${
+                          entry.payout.fee != null ? ` · fee ${formatBitcoin(entry.payout.fee)}` : ''
+                        }`}
+                    </small>
+                  </span>
+                  <span className={entry.payout.status === 'failed' ? 'dim' : 'out'}>
+                    −{formatBitcoin(entry.payout.amount + (entry.payout.fee ?? 0))}
+                  </span>
+                </li>
               ),
             )}
           </ul>
@@ -704,6 +733,32 @@ function WalletPanel({
           token={token}
           busy={busy}
           note={note}
+          quote={quote}
+          onQuote={(to, amount) =>
+            act(async () => {
+              leave();
+              const mine = asked.current;
+              const priced = await register.quotePayout(to, amount);
+              if (mine === asked.current) setQuote(priced);
+            })
+          }
+          onEdit={() => {
+            leave();
+            setQuote(null);
+            setNote('');
+          }}
+          onPay={(priced) =>
+            act(async () => {
+              const { approval, current } = await confirm();
+              const payout = await register.payOut(priced, approval);
+              if (!current()) return;
+              setQuote(null);
+              setMode('list');
+              return payout.status === 'paid'
+                ? `Paid ${formatBitcoin(payout.amount)} to ${payout.to}.`
+                : 'Sent. The mint has not confirmed it yet; Activity will show how it ends.';
+            })
+          }
           onToken={(amount) =>
             act(async () => {
               const { approval, current } = await confirm();
@@ -722,6 +777,7 @@ function WalletPanel({
           onBack={() => {
             leave();
             setToken(null);
+            setQuote(null);
             setNote('');
             setMode('list');
           }}
@@ -791,6 +847,10 @@ function CashOut({
   token,
   busy,
   note,
+  quote,
+  onQuote,
+  onEdit,
+  onPay,
   onToken,
   onReclaim,
   onBack,
@@ -799,12 +859,23 @@ function CashOut({
   token: Cashout | null;
   busy: boolean;
   note: string;
+  quote: PayoutQuote | null;
+  onQuote: (to: Destination, amount?: number) => void;
+  onEdit: () => void;
+  onPay: (quote: PayoutQuote) => void;
   onToken: (amount: number) => void;
   onReclaim: (id: string) => void;
   onBack: () => void;
 }) {
   const [value, setValue] = useState(String(register.balance));
-  const amount = Number(value || '0');
+  const [to, setTo] = useState('');
+  const typed = Number(value || '0');
+  const dest = useMemo(() => parseDestination(to), [to]);
+  // An invoice that names its amount decides it; otherwise the owner does.
+  const fixed = dest?.kind === 'bolt11' ? dest.amount : null;
+  const amount = fixed ?? typed;
+  const unread = to.trim() !== '' && !dest;
+  const noOffers = dest?.kind === 'bolt12' && !register.paysOffers;
 
   if (token) {
     return (
@@ -835,16 +906,87 @@ function CashOut({
     );
   }
 
+  if (quote) {
+    const short = quote.left < 0;
+    return (
+      <div className="stack">
+        <h3>Pay {formatBitcoin(quote.amount)}</h3>
+        <div>
+          <dl className="setting">
+            <dt>To</dt>
+            <dd className="mint-url">{quote.to}</dd>
+          </dl>
+          <dl className="setting">
+            <dt>Fee, at most</dt>
+            <dd data-testid="fee-reserve">{formatBitcoin(quote.feeReserve)}</dd>
+          </dl>
+          <dl className="setting">
+            <dt>Left in the register, at least</dt>
+            <dd data-testid="left">{formatBitcoin(Math.max(quote.left, 0))}</dd>
+          </dl>
+        </div>
+        <p className="muted">
+          The mint holds the fee aside while it pays. Whatever it does not use comes back to the
+          register.
+        </p>
+        {(note || short) && (
+          <p className="error" role="alert">
+            {note ||
+              `Not enough for the amount and the fee. The most this register can send here is about ${formatBitcoin(
+                Math.max(quote.amount + quote.left, 0),
+              )}.`}
+          </p>
+        )}
+        <div className="row">
+          <button className="btn primary" disabled={busy || short} onClick={() => onPay(quote)}>
+            {busy ? 'Paying…' : `Pay ${formatBitcoin(quote.amount)}`}
+          </button>
+          <button className="btn ghost" onClick={onEdit}>
+            Change
+          </button>
+          <button className="btn ghost" onClick={onBack}>
+            Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <form
       className="stack"
       onSubmit={(e) => {
         e.preventDefault();
-        onToken(amount);
+        if (dest) onQuote(dest, fixed == null ? typed : undefined);
+        else onToken(amount);
       }}
     >
       <h3>Cash out</h3>
-      <p className="muted">Turn money in the register into a Cashu token for another wallet.</p>
+      <p className="muted">
+        Pay a Lightning invoice or address from the register, or leave that empty to make a Cashu
+        token for another wallet.
+      </p>
+      <label className="field">
+        Pay to (optional)
+        <input
+          value={to}
+          onChange={(e) => setTo(e.target.value)}
+          placeholder="Lightning invoice or address"
+          aria-label="Lightning invoice or address to pay"
+          autoComplete="off"
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+          inputMode="email"
+        />
+      </label>
+      {(unread || noOffers) && (
+        <p className="muted" role="status">
+          {noOffers
+            ? 'This mint cannot pay BOLT12 offers yet. Use an invoice or a Lightning address.'
+            : 'That is not a Lightning invoice or address the register can pay.'}
+        </p>
+      )}
       <label className="field">
         Amount
         <span className="prefixed">
@@ -852,7 +994,8 @@ function CashOut({
           <input
             inputMode="numeric"
             pattern="[0-9]*"
-            value={value}
+            value={fixed ?? value}
+            readOnly={fixed != null}
             onChange={(e) => setValue(e.target.value.replace(/\D/g, '').slice(0, MAX_DIGITS))}
             aria-label="Amount to cash out"
           />
@@ -866,10 +1009,16 @@ function CashOut({
       <div className="row">
         <button
           className="btn primary"
-          disabled={busy || amount < 1 || amount > register.balance}
+          disabled={busy || unread || noOffers || amount < 1 || amount > register.balance}
           type="submit"
         >
-          {busy ? 'Making token…' : `Make ${formatBitcoin(amount)} token`}
+          {dest
+            ? busy
+              ? 'Checking the cost…'
+              : 'Check the cost'
+            : busy
+              ? 'Making token…'
+              : `Make ${formatBitcoin(amount)} token`}
         </button>
         <button className="btn ghost" type="button" onClick={onBack}>
           Back

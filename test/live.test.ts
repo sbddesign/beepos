@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { parseDestination } from '@/lib/destination';
 import { deriveKeys } from '@/lib/keys';
 import { approve } from '@/lib/reauth';
 import { Register, type RegisterEnv } from '@/lib/register';
@@ -99,5 +100,117 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
     // Recovering again on the phone finds nothing new and loses nothing.
     const settled = phone.balance;
     expect(await phone.recover()).toBe(settled);
+  }, 240_000);
+
+  it('cashes out over Lightning and gets the unused fee reserve back', async () => {
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const keys = deriveKeys(prf);
+    const passkey = async () => prf;
+    const server = new MemoryVaultStore();
+    const till = await Register.open(keys, MINT, device(server));
+    const sale = await till.charge(200, '');
+    await untilPaid(till, sale.id);
+    expect(till.balance).toBe(200);
+
+    // Someone else's invoice: another register on the same test mint.
+    const other = await Register.open(
+      deriveKeys(crypto.getRandomValues(new Uint8Array(32))),
+      MINT,
+      device(null),
+    );
+    const bill = await other.charge(50, '');
+    const to = parseDestination(bill.request)!;
+    expect(to).toMatchObject({ kind: 'bolt11', amount: 50 });
+
+    const quote = await till.quotePayout(to);
+    expect(quote.amount).toBe(50);
+    expect(quote.left).toBe(200 - 50 - quote.feeReserve);
+    expect(till.balance).toBe(200); // a quote moves nothing
+
+    // No approval, no payment.
+    await expect(till.payOut(quote, { accountId: keys.accountId })).rejects.toThrow(
+      'Confirm with your passkey',
+    );
+    expect(till.balance).toBe(200);
+    expect(till.state.payouts).toHaveLength(0);
+
+    const paid = await till.payOut(quote, await approve(keys, passkey));
+    expect(paid).toMatchObject({ status: 'paid', amount: 50, inputs: [] });
+    expect(paid.fee).toBeGreaterThanOrEqual(0);
+    expect(paid.fee).toBeLessThanOrEqual(quote.feeReserve + 2);
+    // Everything not paid or charged as a fee is still in the register.
+    expect(till.balance).toBeGreaterThanOrEqual(quote.left - 4); // the test mint's swap fees
+    expect(till.balance).toBeLessThanOrEqual(150);
+    console.log('payout', { feeReserve: quote.feeReserve, fee: paid.fee, balance: till.balance });
+
+    // The same quote cannot be paid twice.
+    await expect(till.payOut(quote, await approve(keys, passkey))).rejects.toThrow('already started');
+
+    // A second device sees the payment and the same balance; the seed alone agrees.
+    await till.flush();
+    const phone = await Register.open(keys, MINT, device(server));
+    expect(phone.balance).toBe(till.balance);
+    expect(phone.state.payouts[0]).toMatchObject({ id: quote.id, status: 'paid' });
+    const fresh = await Register.open(keys, MINT, device(null));
+    expect(await fresh.recover()).toBe(till.balance);
+  }, 240_000);
+
+  it('gives the ecash back when a Lightning cash-out was set aside but never paid', async () => {
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const keys = deriveKeys(prf);
+    const server = new MemoryVaultStore();
+    const till = await Register.open(keys, MINT, device(server));
+    const sale = await till.charge(100, '');
+    await untilPaid(till, sale.id);
+    const other = await Register.open(
+      deriveKeys(crypto.getRandomValues(new Uint8Array(32))),
+      MINT,
+      device(null),
+    );
+    const quote = await till.quotePayout(parseDestination((await other.charge(40, '')).request)!);
+
+    // The tab dies after the ecash is set aside and before the mint is asked to pay.
+    const melt = till.wallet.meltProofsBolt11.bind(till.wallet);
+    till.wallet.meltProofsBolt11 = async () => new Promise(() => {});
+    void till.payOut(quote, await approve(keys, async () => prf));
+    for (let i = 0; i < 100 && !till.state.payouts.length; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    await till.flush();
+    expect(till.state.payouts[0].status).toBe('pending');
+    const during = till.balance;
+    expect(during).toBeLessThanOrEqual(100 - 40 - quote.feeReserve);
+    till.wallet.meltProofsBolt11 = melt;
+
+    // Reopened on another device: the mint says unpaid, so the ecash returns.
+    const phone = await Register.open(keys, MINT, device(server));
+    expect(phone.balance).toBe(during);
+    await phone.settlePayouts();
+    expect(phone.state.payouts[0]).toMatchObject({ status: 'failed', inputs: [] });
+    expect(phone.balance).toBeGreaterThanOrEqual(96); // 100 less the test mint's swap fee
+    const fresh = await Register.open(keys, MINT, device(null));
+    expect(await fresh.recover()).toBe(phone.balance);
+  }, 240_000);
+
+  it('pays a BOLT12 offer on a mint that supports them', async () => {
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const keys = deriveKeys(prf);
+    const till = await Register.open(keys, MINT, device(null));
+    if (!till.paysOffers) return;
+    await untilPaid(till, (await till.charge(100, '')).id);
+    const other = await Register.open(
+      deriveKeys(crypto.getRandomValues(new Uint8Array(32))),
+      MINT,
+      device(null),
+    );
+    const offer = await other.wallet.createMintQuoteBolt12(other.keys.quotePubkey, { amount: 30 });
+    const to = parseDestination(offer.request)!;
+    expect(to.kind).toBe('bolt12');
+    const quote = await till.quotePayout(to, 30);
+    expect(quote).toMatchObject({ method: 'bolt12', amount: 30 });
+    const paid = await till.payOut(quote, await approve(keys, async () => prf));
+    expect(paid.status).toBe('paid');
+    expect(till.balance).toBeLessThanOrEqual(70);
+    expect(till.balance).toBeGreaterThanOrEqual(70 - quote.feeReserve - 4);
   }, 240_000);
 });

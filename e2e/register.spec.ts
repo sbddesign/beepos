@@ -2,6 +2,7 @@ import { expect, test, type BrowserContext, type CDPSession, type Page } from '@
 
 // Opening the register loads the mint's keys; the test mint can be slow.
 const OPEN = 30_000;
+const MINT = process.env.BEEPOS_TEST_MINT ?? 'https://testnut.cashu.space';
 
 // Printed when a test fails: requests over 4 s and console errors.
 const slow: string[] = [];
@@ -146,7 +147,7 @@ test('create a passkey, take a payment, and open the register on a second device
   await expect(page.getByTestId('token')).toHaveValue(/^cashuB/, { timeout: OPEN });
   await shot('6-token');
   const balance = page.getByTestId('wallet-balance');
-  const left = Number((await balance.innerText()).replace(/\D/g, ''));
+  let left = Number((await balance.innerText()).replace(/\D/g, ''));
   expect(left).toBeLessThanOrEqual(2000);
   expect(left).toBeGreaterThanOrEqual(1990); // the test mint takes a small swap fee
   await page.getByRole('button', { name: 'Done' }).last().click();
@@ -166,6 +167,51 @@ test('create a passkey, take a payment, and open the register on a second device
   await showWords.click();
   expect((await page.getByTestId('words').innerText()).trim().split(/\s+/)).toHaveLength(12);
   await back.click();
+
+  // Cash out over Lightning: paste an invoice, see the cost, pay with the passkey.
+  // The test mint pays its own invoices after a few seconds, and an invoice that is
+  // already paid cannot be paid again. When it wins that race the register must say
+  // so and keep the money; then a fresh invoice is tried.
+  await page.getByRole('button', { name: 'Cash out' }).click();
+  const payTo = page.getByLabel('Lightning invoice or address to pay');
+  await payTo.fill('not a destination');
+  await expect(page.getByText('That is not a Lightning invoice or address')).toBeVisible();
+  await expect(page.getByRole('button', { name: /^Make/ })).toBeDisabled();
+  let reserve = 0;
+  for (let attempt = 1; ; attempt++) {
+    const bill = await (
+      await page.request.post(`${MINT}/v1/mint/quote/bolt11`, { data: { amount: 50, unit: 'sat' } })
+    ).json();
+    await payTo.fill(`lightning:${bill.request.toUpperCase()}`);
+    await expect(page.getByLabel('Amount to cash out')).toHaveValue('50');
+    await page.getByRole('button', { name: 'Check the cost' }).click();
+    await expect(page.getByRole('heading', { name: 'Pay ₿50' })).toBeVisible({ timeout: OPEN });
+    reserve = Number((await page.getByTestId('fee-reserve').innerText()).replace(/\D/g, ''));
+    await expect(page.getByTestId('left')).toHaveText(
+      `₿${(left - 50 - reserve).toLocaleString('en-US')}`,
+    );
+    await expect(balance).toHaveText(`₿${left.toLocaleString('en-US')}`); // nothing moved yet
+    if (attempt === 1) await shot('7-lightning-cost');
+    await page.getByRole('button', { name: 'Pay ₿50' }).click();
+    const paid = page.getByText(/^Paid ₿50 to lnbc/);
+    const refused = page.getByText('The money is back in the register.');
+    await expect(paid.or(refused)).toBeVisible({ timeout: OPEN });
+    if (await paid.isVisible()) break;
+    expect(attempt).toBeLessThan(4);
+    // Refused: the ecash set aside came back, less the test mint's swap fees.
+    const back = Number((await balance.innerText()).replace(/\D/g, ''));
+    expect(back).toBeGreaterThanOrEqual(left - 4);
+    expect(back).toBeLessThanOrEqual(left);
+    left = back;
+    await page.getByRole('button', { name: 'Change' }).click();
+  }
+  await expect(page.getByText(/^Cash out to lnbc/).first()).toBeVisible();
+  await expect(page.getByText(/^Paid · /)).toBeVisible();
+  const after = Number((await balance.innerText()).replace(/\D/g, ''));
+  expect(after).toBeLessThanOrEqual(left - 50);
+  expect(after).toBeGreaterThanOrEqual(left - 50 - reserve - 4); // the test mint's swap fees
+  left = after;
+  await shot('8-lightning-paid');
 
   // Leaving while the passkey prompt is still open withdraws the question: the
   // prompt is closed, and an answer that arrives later shows and moves nothing.
