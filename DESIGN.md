@@ -164,6 +164,8 @@ The keypad, invoice and Paid screens show only the sale in front of you. The dra
 
 `/about` is the one public page: the product video and the way in. It is a single frost card (`.about-card`, at most 46rem wide) centred on the liquid: mark and name, one headline, the video at 16:9 with native controls and a poster, two lines of copy, an amber **Get started** that goes home, and one fine-print line. It opens no register and shows nothing private. The video never plays by itself.
 
+While it plays, the page goes dark around it (`html[data-watching]`): an ink veil at 86% covers the liquid (or the still gradient without WebGL), the card's border fades and everything on the card except the video drops to 40% (Get started to 75%, full again on hover or focus). It eases over 0.9 s both ways and returns on pause or at the end. With reduced motion the change is immediate.
+
 The lock screen links to it with "What is beepos?" as a quiet link (`.quiet-link`: muted, underlined, 44px tall), so the amber passkey button stays the only loud thing there.
 
 The video files live at `public/video/beepos.webm`, `beepos.mp4` and `beepos-poster.jpg`.
