@@ -654,7 +654,7 @@ export function Film({ music, at }: { music: string | null; at?: number }) {
                       </div>
                       <p className="amount small">{formatBitcoin(184_300)}</p>
                       <p className="muted sync-line">
-                        <span className="dot synced" /> Backed up. Any device with your passkey can open this register.
+                        <span className="dot synced" /> Backed up
                       </p>
                       <nav className="tiles">
                         {(['activity', 'items', 'settings'] as const).map((name) => (
