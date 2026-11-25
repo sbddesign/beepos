@@ -45,6 +45,11 @@ async function openRegister(page: Page) {
   await expect(page.getByTestId('wallet-balance')).toBeVisible();
 }
 
+// The register opens on a menu of tiles; each one leads to its own view.
+const tile = (page: Page, name: string) =>
+  page.getByRole('navigation', { name: 'Register' }).getByRole('button', { name });
+const goBack = (page: Page) => page.getByRole('button', { name: 'Back', exact: true }).click();
+
 // Nobody looking at the till can learn what the drawer holds: not on screen, not
 // in the page behind it, not in what a screen reader says.
 async function expectNoTotal(page: Page, total: string) {
@@ -91,8 +96,8 @@ test('create a passkey, take a payment, and open the register on a second device
   // the choice has to follow the passkey to the second device below.
   await expect(page.getByTestId('amount')).toHaveText('$0.00', { timeout: OPEN });
   await openRegister(page);
+  await tile(page, 'Settings').click();
   await page.getByLabel('Currency').selectOption({ label: 'Bitcoin only' });
-  await expect(page.getByText('The keypad takes bitcoin amounts.')).toBeVisible();
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByTestId('amount')).toHaveText('₿0');
   await expect(page.getByTestId('convert')).toHaveCount(0);
@@ -121,7 +126,13 @@ test('create a passkey, take a payment, and open the register on a second device
   // The total is behind the button. Escape or Done puts it away again.
   await openRegister(page);
   await expect(page.getByTestId('wallet-balance')).toHaveText('₿2,100', { timeout: OPEN });
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Register' }).getByRole('button')).toHaveText([
+    'Activity',
+    'Saved items',
+    'Settings',
+    'Cash out',
+    'Lock',
+  ]);
   // With the register open, typing does not ring up a sale behind it.
   await page.keyboard.press('7');
   await page.keyboard.press('Escape');
@@ -135,12 +146,18 @@ test('create a passkey, take a payment, and open the register on a second device
   await expectNoTotal(page, '₿2,100');
   await openRegister(page);
   await expect(page.getByTestId('wallet-balance')).toHaveText('₿2,100', { timeout: OPEN });
-  await expect(page.getByText('Flat white')).toBeVisible();
-  await expect(page.getByText('+₿2,100')).toBeVisible();
   await expect(page.getByText('Any device with your passkey can open this register')).toBeVisible();
   await page.waitForTimeout(400); // let the drawer finish sliding in before the picture
   await shot('5-register');
-  await page.getByRole('button', { name: 'Lock' }).click();
+  // The sales are one tap in, and the total stays on the menu.
+  await expect(page.getByText('Flat white')).toHaveCount(0);
+  await tile(page, 'Activity').click();
+  await expect(page.getByText('Flat white')).toBeVisible();
+  await expect(page.getByText('+₿2,100')).toBeVisible();
+  await expect(page.getByTestId('wallet-balance')).toHaveCount(0);
+  await shot('5-activity');
+  await goBack(page);
+  await tile(page, 'Lock').click();
   await page.getByRole('button', { name: 'Unlock with passkey' }).click();
   // Unlocking lands on the keypad with the drawer shut.
   await expect(page.getByTestId('amount')).toHaveText('₿0', { timeout: OPEN });
@@ -157,10 +174,12 @@ test('create a passkey, take a payment, and open the register on a second device
   await expect(page.getByTestId('amount')).toHaveText('₿0', { timeout: OPEN });
   await openRegister(page);
   await expect(page.getByTestId('wallet-balance')).toHaveText('₿2,100', { timeout: OPEN });
+  await tile(page, 'Activity').click();
   await expect(page.getByText('Flat white')).toBeVisible();
+  await goBack(page);
 
   // Cash out to a token. The passkey is asked for again and answers.
-  await page.getByRole('button', { name: 'Cash out' }).click();
+  await tile(page, 'Cash out').click();
   await page.getByLabel('Amount to cash out').fill('100');
   await page.getByRole('button', { name: 'Make ₿100 token' }).click();
   await expect(page.getByTestId('token')).toHaveValue(/^cashuB/, { timeout: OPEN });
@@ -170,28 +189,41 @@ test('create a passkey, take a payment, and open the register on a second device
   expect(left).toBeLessThanOrEqual(2000);
   expect(left).toBeGreaterThanOrEqual(1990); // the test mint takes a small swap fee
   await page.getByRole('button', { name: 'Done' }).last().click();
+  await tile(page, 'Activity').click();
   await expect(page.getByText('Not redeemed yet')).toBeVisible();
 
   // The token is still money, so seeing it again takes the passkey too.
   const showToken = page.getByRole('button', { name: 'Show token' });
   await showToken.click();
   await expect(page.getByTestId('token')).toHaveValue(/^cashuB/);
+  // Done on a token opened from Activity goes back to Activity.
   await page.getByRole('button', { name: 'Done' }).last().click();
+  await expect(showToken).toBeVisible();
+  await goBack(page);
 
-  // The backup screen shows the 12 words after the passkey, and hides them again on leaving.
+  // Backup lives in Settings. It shows the 12 words after the passkey, and hides
+  // them again on leaving.
   const showWords = page.getByRole('button', { name: 'Show the 12 words' });
   const back = page.getByRole('button', { name: 'Back', exact: true });
-  await page.getByRole('button', { name: 'Backup' }).click();
+  const backup = page.getByRole('button', { name: 'Backup' });
+  await tile(page, 'Settings').click();
+  await backup.click();
+  await expect(page.getByRole('heading', { name: 'Backup' })).toBeVisible();
   await expect(page.getByTestId('words')).toHaveCount(0);
   await showWords.click();
   expect((await page.getByTestId('words').innerText()).trim().split(/\s+/)).toHaveLength(12);
+  await back.click();
+  await expect(page.getByLabel('Currency')).toBeVisible(); // back in Settings
+  await backup.click();
+  await expect(page.getByTestId('words')).toHaveCount(0);
+  await back.click();
   await back.click();
 
   // Cash out over Lightning: paste an invoice, see the cost, pay with the passkey.
   // The test mint pays its own invoices after a few seconds, and an invoice that is
   // already paid cannot be paid again. When it wins that race the register must say
   // so and keep the money; then a fresh invoice is tried.
-  await page.getByRole('button', { name: 'Cash out' }).click();
+  await tile(page, 'Cash out').click();
   const payTo = page.getByLabel('Lightning invoice or address to pay');
   await payTo.fill('not a destination');
   await expect(page.getByText('That is not a Lightning invoice or address')).toBeVisible();
@@ -224,21 +256,23 @@ test('create a passkey, take a payment, and open the register on a second device
     left = back;
     await page.getByRole('button', { name: 'Change' }).click();
   }
-  await expect(page.getByText(/^Cash out to lnbc/).first()).toBeVisible();
-  await expect(page.getByText(/^Paid · /)).toBeVisible();
   const after = Number((await balance.innerText()).replace(/\D/g, ''));
   expect(after).toBeLessThanOrEqual(left - 50);
   expect(after).toBeGreaterThanOrEqual(left - 50 - reserve - 4); // the test mint's swap fees
   left = after;
   await shot('8-lightning-paid');
+  await tile(page, 'Activity').click();
+  await expect(page.getByText(/^Cash out to lnbc/).first()).toBeVisible();
+  await expect(page.getByText(/^Paid · /)).toBeVisible();
+  await back.click();
 
   // Leaving while the passkey prompt is still open withdraws the question: the
   // prompt is closed, and an answer that arrives later shows and moves nothing.
   const presence = (enabled: boolean) =>
     cdp.send('WebAuthn.setAutomaticPresenceSimulation', { authenticatorId, enabled });
-  const backup = page.getByRole('button', { name: 'Backup' });
   await presence(false);
-  // Back out of Backup.
+  // Back out of Backup, to Settings.
+  await tile(page, 'Settings').click();
   await backup.click();
   await showWords.click();
   await expect(showWords).toBeDisabled();
@@ -251,23 +285,29 @@ test('create a passkey, take a payment, and open the register on a second device
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await openRegister(page);
+  await tile(page, 'Settings').click();
   await backup.click();
   await expect(showWords).toBeEnabled();
   await expect(page.getByTestId('words')).toHaveCount(0);
   await back.click();
-  // Move from a pending "Show token" to another view.
+  await back.click();
+  // Leave Activity for the menu with "Show token" still asking.
+  await tile(page, 'Activity').click();
   await showToken.click();
-  await backup.click();
-  await expect(showWords).toBeEnabled();
+  await expect(showToken).toBeDisabled();
+  await back.click();
+  await tile(page, 'Activity').click();
+  await expect(showToken).toBeEnabled();
   await expect(page.getByTestId('token')).toHaveCount(0);
   await back.click();
   // Back out of a pending cash out: no token is made.
-  await page.getByRole('button', { name: 'Cash out' }).click();
+  await tile(page, 'Cash out').click();
   await page.getByRole('button', { name: /^Make ₿[\d,]+ token$/ }).click();
   await back.click();
-  await expect(page.getByText('Not redeemed yet')).toHaveCount(1);
   await expect(balance).toHaveText(`₿${left.toLocaleString('en-US')}`);
   await presence(true);
+  await tile(page, 'Activity').click();
+  await expect(page.getByText('Not redeemed yet')).toHaveCount(1);
   await expect(page.getByTestId('token')).toHaveCount(0);
   await expect(page.getByTestId('words')).toHaveCount(0);
 
@@ -277,14 +317,17 @@ test('create a passkey, take a payment, and open the register on a second device
   await showToken.click();
   await expect(showToken).toBeEnabled({ timeout: OPEN });
   await expect(page.getByTestId('token')).toHaveCount(0);
+  await back.click();
 
-  await page.getByRole('button', { name: 'Backup' }).click();
+  await tile(page, 'Settings').click();
+  await backup.click();
   await showWords.click();
   await expect(showWords).toBeEnabled({ timeout: OPEN });
   await expect(page.getByTestId('words')).toHaveCount(0);
   await back.click();
+  await back.click();
 
-  await page.getByRole('button', { name: 'Cash out' }).click();
+  await tile(page, 'Cash out').click();
   const make = page.getByRole('button', { name: /^Make ₿[\d,]+ token$/ });
   await make.click();
   await expect(make).toBeEnabled({ timeout: OPEN });
@@ -293,8 +336,10 @@ test('create a passkey, take a payment, and open the register on a second device
   await back.click();
 
   // Taking a token back is safe and asks for nothing.
+  await tile(page, 'Activity').click();
   await page.getByRole('button', { name: 'Take it back' }).click();
   await expect(page.getByText('Token taken back into the register.')).toBeVisible({ timeout: OPEN });
+  await back.click();
   await expect(balance).not.toHaveText(`₿${left.toLocaleString('en-US')}`);
 });
 
@@ -342,12 +387,17 @@ test('ring up in dollars, then in yen', async ({ context, page }, testInfo) => {
   // The sale keeps both amounts.
   await openRegister(page);
   await expect(page.getByTestId('wallet-balance')).toHaveText('₿25,000', { timeout: OPEN });
+  await tile(page, 'Activity').click();
   await expect(page.getByText('+₿25,000')).toBeVisible();
   await expect(page.getByText(/· \$12\.50$/)).toBeVisible();
+  await goBack(page);
 
   // Yen has no cents: 1,000 yen at 8,000,000 a bitcoin is ₿12,500.
+  await tile(page, 'Settings').click();
   await page.getByLabel('Currency').selectOption('JPY');
-  await expect(page.getByTestId('currency-note')).toContainText('The keypad takes JPY');
+  // Settings is the currency, the mint and the way to Backup, with no explainer.
+  await expect(page.getByText(/The keypad takes/)).toHaveCount(0);
+  await expect(page.getByText('testnut.cashu.space')).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('fiat-settings.png') });
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(amount).toHaveText('¥0');
@@ -377,6 +427,7 @@ test('saved items fill the price and the memo in one tap', async ({ context, pag
 
   // Add one in dollars and one in bitcoin. A bad price is refused in plain words.
   await openRegister(page);
+  await tile(page, 'Saved items').click();
   await add('Flat white', 'four');
   await expect(page.locator('.saved-form [role=alert]')).toHaveText(
     'Enter a price in USD, like 4.50.',
@@ -406,6 +457,7 @@ test('saved items fill the price and the memo in one tap', async ({ context, pag
 
   // Bitcoin only: the bitcoin item shows, and the dollar price is never read as bitcoin.
   await openRegister(page);
+  await tile(page, 'Settings').click();
   await page.getByLabel('Currency').selectOption({ label: 'Bitcoin only' });
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(chips.getByRole('button')).toHaveText(['Sticker₿2,100']);
@@ -424,6 +476,7 @@ test('saved items fill the price and the memo in one tap', async ({ context, pag
 
   // Change one, remove the other.
   await openRegister(page);
+  await tile(page, 'Saved items').click();
   await page.getByRole('button', { name: 'Change Sticker' }).click();
   await expect(page.getByLabel('Price', { exact: true })).toHaveValue('2100');
   await page.getByLabel('Price', { exact: true }).fill('500');
@@ -434,6 +487,34 @@ test('saved items fill the price and the memo in one tap', async ({ context, pag
   ]);
   await page.getByRole('button', { name: 'Done' }).click();
   await expect(chips.getByRole('button')).toHaveText(['Sticker₿500']);
+});
+
+test('a long sales history does not push the menu down', async ({ context, page }, testInfo) => {
+  await addAuthenticator(context, page);
+  await prices(page, { USD: '50000' });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a passkey' }).click();
+  await expect(page.getByTestId('amount')).toHaveText('$0.00', { timeout: OPEN });
+  const rung = ['Flat white', 'Cortado', 'Croissant', 'Oat latte', 'Sticker', 'Espresso'];
+  for (let i = 0; i < 14; i++) {
+    for (const d of ['3', '5', '0']) await page.getByRole('button', { name: d, exact: true }).click();
+    await page.getByLabel('Memo (optional)').fill(rung[i % rung.length]);
+    await page.getByRole('button', { name: /^Charge \$/ }).click();
+    await expect(page.getByTestId('invoice-amount')).toBeVisible({ timeout: OPEN });
+    await page.getByRole('button', { name: 'Cancel' }).click();
+  }
+  await openRegister(page);
+  // Every tile is on screen without scrolling, however much has been sold.
+  for (const name of ['Activity', 'Saved items', 'Settings', 'Cash out', 'Lock']) {
+    await expect(tile(page, name)).toBeInViewport({ ratio: 1 });
+  }
+  await expect(page.locator('ul.activity')).toHaveCount(0);
+  await tile(page, 'Activity').click();
+  await expect(page.locator('ul.activity > li')).toHaveCount(14);
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: testInfo.outputPath('long-activity.png') });
+  await goBack(page);
+  await expect(tile(page, 'Lock')).toBeInViewport({ ratio: 1 });
 });
 
 test('with no price to be had, the keypad takes bitcoin and says why', async ({ context, page }) => {

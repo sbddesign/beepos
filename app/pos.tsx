@@ -657,26 +657,7 @@ function currencyName(code: Currency): string {
   }
 }
 
-/** Says what the keypad does with the chosen currency, and how old the price is. */
-function CurrencyNote({ currency }: { currency: Currency | null }) {
-  const { rates, loading } = useRates(currency !== null);
-  if (!currency) return <p className="muted setting-note">The keypad takes bitcoin amounts.</p>;
-  const rate = usableRate(rates, currency);
-  const one = 10 ** decimals(currency);
-  return (
-    <p className="muted setting-note" role="status" data-testid="currency-note">
-      {rate
-        ? `The keypad takes ${currency} and charges the bitcoin it is worth. ${formatFiat(one, currency)} is ${formatBitcoin(
-            toBitcoin(one, currency, rate),
-          )} (${rates!.source}, ${timeAgo(rates!.at)}).`
-        : loading
-          ? 'Getting the price…'
-          : `No current price for ${currency}. The keypad takes bitcoin until one arrives.`}
-    </p>
-  );
-}
-
-/** Settings: the saved items the keypad offers. Add, change and remove. */
+/** The saved items the keypad offers. Add, change and remove. */
 function SavedItems({ register }: { register: Register }) {
   const items = register.presets;
   const fiat = register.fiat;
@@ -702,22 +683,12 @@ function SavedItems({ register }: { register: Register }) {
 
   return (
     <div className="saved">
-      <div className="setting">
-        <span className="setting-label" id="saved-title">
-          Saved items
-        </span>
-        {editing === null && items.length < MAX_PRESETS && (
-          <button className="link" onClick={() => openForm()}>
-            Add an item
-          </button>
-        )}
-      </div>
       {items.length === 0 && editing === null && (
         <p className="muted setting-note">
           Things you charge for often. One tap on the keypad fills the price and the memo.
         </p>
       )}
-      <ul className="saved-list" aria-labelledby="saved-title">
+      <ul className="saved-list" aria-label="Saved items">
         {items.map((preset) => (
           <li key={preset.id}>
             <span className="saved-name">{preset.name}</span>
@@ -752,6 +723,11 @@ function SavedItems({ register }: { register: Register }) {
         <p className="muted setting-note">
           That is all {MAX_PRESETS} the register keeps. Remove one to add another.
         </p>
+      )}
+      {editing === null && items.length < MAX_PRESETS && (
+        <button className="btn ghost saved-add" onClick={() => openForm()}>
+          Add an item
+        </button>
       )}
       {editing !== null && (
         <form
@@ -827,6 +803,54 @@ function SavedItems({ register }: { register: Register }) {
   );
 }
 
+type Mode = 'menu' | 'activity' | 'items' | 'settings' | 'backup' | 'cashout';
+
+const ICONS = {
+  activity: <path d="M6 3.5h12v17l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" />,
+  items: (
+    <>
+      <path d="M3.5 12.5V4.5h8l9 9-8 8z" />
+      <circle cx="8" cy="9" r="1.3" />
+    </>
+  ),
+  settings: (
+    <>
+      <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+      <circle cx="15" cy="7" r="2" />
+      <circle cx="9" cy="17" r="2" />
+    </>
+  ),
+  cashout: <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M4 14v4.5a1.5 1.5 0 0 0 1.5 1.5h13a1.5 1.5 0 0 0 1.5-1.5V14" />,
+  lock: (
+    <>
+      <rect x="5" y="10.5" width="14" height="10" rx="2" />
+      <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+    </>
+  ),
+  back: <path d="M14.5 5 8 12l6.5 7" />,
+  forward: <path d="M9.5 5 16 12l-6.5 7" />,
+};
+
+/** Line icons for the register menu, drawn like the till icon in the header. */
+function Icon({ name }: { name: keyof typeof ICONS }) {
+  return (
+    <svg
+      className="icon"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      {ICONS[name]}
+    </svg>
+  );
+}
+
 type Entry =
   | { kind: 'sale'; at: number; sale: Sale }
   | { kind: 'cashout'; at: number; cashout: Cashout }
@@ -841,7 +865,9 @@ function WalletPanel({
   onClose: () => void;
   onLock: () => void;
 }) {
-  const [mode, setMode] = useState<'list' | 'cashout' | 'backup'>('list');
+  const [mode, setMode] = useState<Mode>('menu');
+  // Where Cash out returns to: the menu, or Activity when a token was opened from there.
+  const [from, setFrom] = useState<Mode>('menu');
   const [token, setToken] = useState<Cashout | null>(null);
   const [quote, setQuote] = useState<PayoutQuote | null>(null);
   const [words, setWords] = useState('');
@@ -872,6 +898,16 @@ function WalletPanel({
       throw new PasskeyError('cancelled', 'Left before the passkey answered.');
     }
     return { approval, current: () => mine === asked.current };
+  };
+
+  /** Moves to another view. Whatever was being asked or shown in this one is dropped. */
+  const go = (next: Mode) => {
+    leave();
+    setWords('');
+    setToken(null);
+    setQuote(null);
+    setNote('');
+    setMode(next);
   };
 
   const entries = useMemo<Entry[]>(() => {
@@ -912,10 +948,32 @@ function WalletPanel({
     local: 'Saved on this device only. No backup server is set up.',
   }[register.sync];
 
+  const titles: Record<Mode, string> = {
+    menu: 'Register',
+    activity: 'Activity',
+    items: 'Saved items',
+    settings: 'Settings',
+    backup: 'Backup',
+    cashout: 'Register',
+  };
+  // Activity, Saved items and Settings go back to the menu; Backup goes back to Settings.
+  // Cash out has its own Back, because where it leads depends on the step.
+  const up: Partial<Record<Mode, Mode>> = {
+    activity: 'menu',
+    items: 'menu',
+    settings: 'menu',
+    backup: 'settings',
+  };
+
   return (
     <div className="wallet">
       <div className="wallet-head">
-        <h2>Register</h2>
+        {up[mode] && (
+          <button className="btn ghost back" onClick={() => go(up[mode]!)} aria-label="Back">
+            <Icon name="back" />
+          </button>
+        )}
+        <h2>{titles[mode]}</h2>
         <button
           className="btn ghost close"
           onClick={() => {
@@ -927,56 +985,67 @@ function WalletPanel({
           Done
         </button>
       </div>
-      <p className="amount small" data-testid="wallet-balance">
-        {formatBitcoin(register.balance)}
-      </p>
-      <p className="muted sync-line">
-        <SyncDot status={register.sync} /> {syncText}
-      </p>
+      {(mode === 'menu' || mode === 'cashout') && (
+        <p className="amount small" data-testid="wallet-balance">
+          {formatBitcoin(register.balance)}
+        </p>
+      )}
 
-      {mode === 'list' && (
+      {mode === 'menu' && (
         <>
-          <div className="row">
-            <button
-              className="btn primary"
-              disabled={register.balance === 0}
-              onClick={() => {
-                leave();
-                setToken(null);
-                setQuote(null);
-                setNote('');
-                setMode('cashout');
-              }}
-            >
-              Cash out
-            </button>
-            <button
-              className="btn ghost"
-              onClick={() => {
-                leave();
-                setWords('');
-                setNote('');
-                setMode('backup');
-              }}
-            >
-              Backup
-            </button>
-            <button
-              className="btn ghost"
-              onClick={() => {
-                leave();
-                onLock();
-              }}
-            >
-              Lock
-            </button>
-          </div>
+          <p className="muted sync-line">
+            <SyncDot status={register.sync} /> {syncText}
+          </p>
           {note && (
             <p className="muted" role="status">
               {note}
             </p>
           )}
-          <h3>Activity</h3>
+          <nav className="tiles" aria-label="Register">
+            <button className="tile" onClick={() => go('activity')}>
+              <Icon name="activity" />
+              Activity
+            </button>
+            <button className="tile" onClick={() => go('items')}>
+              <Icon name="items" />
+              Saved items
+            </button>
+            <button className="tile" onClick={() => go('settings')}>
+              <Icon name="settings" />
+              Settings
+            </button>
+            <button
+              className="tile primary"
+              disabled={register.balance === 0}
+              onClick={() => {
+                setFrom('menu');
+                go('cashout');
+              }}
+            >
+              <Icon name="cashout" />
+              Cash out
+            </button>
+            <button
+              className="tile wide"
+              onClick={() => {
+                leave();
+                onLock();
+              }}
+            >
+              <Icon name="lock" />
+              Lock
+            </button>
+          </nav>
+        </>
+      )}
+
+      {mode === 'activity' && (
+        <>
+          {note && (
+            <p className="muted" role="status">
+              {note}
+            </p>
+          )}
           {entries.length === 0 && <p className="muted">No sales yet.</p>}
           <ul className="activity">
             {entries.map((entry) =>
@@ -1009,6 +1078,7 @@ function WalletPanel({
                               act(async () => {
                                 const { approval } = await confirm();
                                 setToken(register.cashoutToken(entry.cashout.id, approval));
+                                setFrom('activity');
                                 setMode('cashout');
                               })
                             }
@@ -1058,34 +1128,39 @@ function WalletPanel({
               ),
             )}
           </ul>
-          {/* Per-register settings go in this section, one row each. */}
-          <section className="settings" aria-labelledby="settings-title">
-            <h3 id="settings-title">Settings</h3>
-            <div className="setting">
-              <label htmlFor="currency">Currency</label>
-              <select
-                id="currency"
-                value={register.fiat ?? ''}
-                onChange={(e) =>
-                  register.setFiat(isCurrency(e.target.value) ? e.target.value : null)
-                }
-              >
-                <option value="">Bitcoin only</option>
-                {CURRENCIES.map((code) => (
-                  <option key={code} value={code}>
-                    {code} · {currencyName(code)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <CurrencyNote currency={register.fiat} />
-            <SavedItems register={register} />
-            <dl className="setting">
-              <dt>Mint</dt>
-              <dd className="mint-url">{register.state.mintUrl.replace(/^https?:\/\//, '')}</dd>
-            </dl>
-          </section>
         </>
+      )}
+
+      {mode === 'items' && <SavedItems register={register} />}
+
+      {mode === 'settings' && (
+        <section className="settings">
+          <div className="setting">
+            <label htmlFor="currency">Currency</label>
+            <select
+              id="currency"
+              value={register.fiat ?? ''}
+              onChange={(e) => register.setFiat(isCurrency(e.target.value) ? e.target.value : null)}
+            >
+              <option value="">Bitcoin only</option>
+              {CURRENCIES.map((code) => (
+                <option key={code} value={code}>
+                  {code} · {currencyName(code)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <dl className="setting">
+            <dt>Mint</dt>
+            <dd className="mint-url">{register.state.mintUrl.replace(/^https?:\/\//, '')}</dd>
+          </dl>
+          <button className="setting setting-link" onClick={() => go('backup')}>
+            <span className="setting-label">Backup</span>
+            <span className="muted">
+              12 words <Icon name="forward" />
+            </span>
+          </button>
+        </section>
       )}
 
       {mode === 'cashout' && (
@@ -1114,7 +1189,7 @@ function WalletPanel({
               const payout = await register.payOut(priced, approval);
               if (!current()) return;
               setQuote(null);
-              setMode('list');
+              setMode('menu');
               return payout.status === 'paid'
                 ? `Paid ${formatBitcoin(payout.amount)} to ${payout.to}.`
                 : 'Not confirmed yet. The money for it stays set aside until the mint answers; Activity will show how it ends.';
@@ -1131,23 +1206,17 @@ function WalletPanel({
           onReclaim={(id) =>
             act(async () => {
               await register.reclaim(id);
-              setMode('list');
+              setToken(null);
+              setMode('activity');
               return 'Token taken back into the register.';
             })
           }
-          onBack={() => {
-            leave();
-            setToken(null);
-            setQuote(null);
-            setNote('');
-            setMode('list');
-          }}
+          onBack={() => go(from)}
         />
       )}
 
       {mode === 'backup' && (
         <div className="stack">
-          <h3>Backup</h3>
           <p className="muted">
             Your passkey opens this register on any device it syncs to. If you ever lose the
             passkey, these 12 words restore the money in any Cashu wallet that supports seed
@@ -1186,17 +1255,6 @@ function WalletPanel({
               {note}
             </p>
           )}
-          <button
-            className="btn ghost"
-            onClick={() => {
-              leave();
-              setWords('');
-              setNote('');
-              setMode('list');
-            }}
-          >
-            Back
-          </button>
         </div>
       )}
     </div>

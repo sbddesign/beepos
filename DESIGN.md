@@ -167,15 +167,29 @@ Tapping it opens the **drawer** (`.drawer`), a modal `<dialog>` in deep frost th
 | Up to 26rem | The whole screen |
 | Wider | A 26rem column on the right edge; the till beside it is dimmed by a 50% ink scrim |
 
-Inside, top to bottom: the **Register** title and **Done**, the total, the sync line, then Cash out, Backup and Lock, then **Activity**, then **Settings**. New per-register settings go in the Settings section, one row each (label on the left, value or control on the right). A control is a native `<select>` or input styled like the other fields; a one-line note (`.setting-note`) under the row says what the choice does.
+The drawer is a set of views, one at a time. A long sales history never pushes anything else down.
 
-**Saved items** is the one setting that is a list: a row per item (name, price, Change, Remove), an **Add an item** link beside the label, and a small form that opens in place under the list. A register keeps at most 12.
+**The menu** is what the drawer opens on: the **Register** title and **Done**, the total, the sync line, then five tiles.
+
+| Tile | Leads to |
+| --- | --- |
+| Activity | Sales and cash-outs, newest first |
+| Saved items | The list of saved items: a row each (name, price, Change, Remove), then **Add an item**, with a small form that opens in place. A register keeps at most 12 |
+| Settings | One row per setting, label on the left and value or control on the right: Currency (a native `<select>`), Mint, and Backup, which opens the Backup view |
+| Cash out | The cash-out form. The one amber tile; disabled when the register is empty |
+| Lock | Locks the register |
+
+**Tiles** (`.tile`) are clear glass, two across, at least 6.25rem tall, with a 28px line icon top left and the label bottom left in 1.05rem semibold. Lock (`.tile.wide`) runs the full width as a 60px row. Icons are 24-unit line drawings with a 1.7 stroke, the same hand as the till icon in the header, and always sit beside a text label.
+
+**Every other view** replaces the menu. Its header is a square back button (chevron, labelled "Back"), the view's title, and Done. Back goes up one level: Activity, Saved items and Settings to the menu, Backup to Settings. Cash out keeps its own Back and Done buttons, because where they lead depends on the step. The total shows on the menu and in Cash out only.
+
+Leaving a view by any route (Back, Done, Escape, another tile) withdraws a passkey prompt that is still open and clears anything secret that view was showing. A new setting gets a row in Settings; do not add explainer paragraphs under a row.
 
 ### Saved items on the keypad
 
 A single row of pills (`.presets`) above the memo that scrolls sideways and never wraps, so the keys do not move however many there are. Each pill (`.preset`) is ink glass at 68% with no blur, at least 44px tall, with the name in `--text` and the price in `--muted`. A tap fills the amount and the memo and does not charge; the pill whose price and name are showing has an amber rim. The row only holds items priced in the unit the keypad is taking at that moment. An item's price is never converted, and never read as another unit.
 
-The drawer closes with Done, Escape, or a tap on the scrim, and focus returns to the header button. It is closed when the register is unlocked and whenever a sale starts. While it is open the till behind it cannot be pressed and the keyboard does not type into the keypad. Closing it removes it from the page, so it always reopens on the list.
+The drawer closes with Done, Escape, or a tap on the scrim, and focus returns to the header button. It is closed when the register is unlocked and whenever a sale starts. While it is open the till behind it cannot be pressed and the keyboard does not type into the keypad. Closing it removes it from the page, so it always reopens on the menu.
 
 ## Controls and states
 
