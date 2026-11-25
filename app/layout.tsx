@@ -12,7 +12,7 @@ const manrope = Manrope({
 
 export const metadata: Metadata = {
   title: 'beepos',
-  description: 'A point of sale that takes Lightning and keeps ecash. Your passkey is the only key.',
+  description: 'The cash register from the future. Start receiving Bitcoin today.',
   manifest: '/manifest.webmanifest',
   icons: { icon: '/icon.svg' },
   appleWebApp: { capable: true, title: 'beepos', statusBarStyle: 'black-translucent' },

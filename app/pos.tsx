@@ -201,7 +201,7 @@ export function Pos({ mintUrl }: { mintUrl: string }) {
       <div className="lock-card">
         <img src="/icon.svg" alt="" width={72} height={72} />
         <h1>beepos</h1>
-        <p className="muted">Take Lightning. Keep ecash. Your passkey is the only key.</p>
+        <p className="muted">The cash register from the future. Start receiving Bitcoin today.</p>
         {busy === 'open' ? (
           <p className="muted" role="status">
             Opening the register…
