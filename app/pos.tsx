@@ -18,6 +18,13 @@ import {
 import { formatBitcoin, timeAgo } from '@/lib/format';
 import { deriveKeys } from '@/lib/keys';
 import { PasskeyError, register as createPasskey, unlock } from '@/lib/passkey';
+import {
+  MAX_PRESETS,
+  MAX_PRESET_NAME,
+  parsePrice,
+  priceText,
+  type Preset,
+} from '@/lib/presets';
 import { approve } from '@/lib/reauth';
 import { Register, browserEnv, type PayoutQuote } from '@/lib/register';
 import type { Cashout, Payout, Sale } from '@/lib/state';
@@ -401,6 +408,14 @@ function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sa
   const limits = useMemo(() => mintLimits(register), [register]);
   const tooBig = amount > limits.max;
   const ready = amount >= limits.min && !tooBig && !busy;
+  // Saved items priced in what the keypad is taking right now. An item priced in
+  // another unit is left out: its price is never converted or read as this unit.
+  const presets = register.presets.filter((p) => (p.currency ?? '') === unit);
+  const pick = (preset: Preset) => {
+    setError('');
+    setEntry({ unit, digits: String(preset.amount) });
+    setMemo(preset.name);
+  };
 
   const press = useCallback((key: string) => {
     setError('');
@@ -473,6 +488,22 @@ function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sa
       <p className="hint" role={error || tooBig ? 'alert' : undefined}>
         {error || (tooBig ? `The most one sale can take is ${formatBitcoin(limits.max)}.` : ' ')}
       </p>
+      {presets.length > 0 && (
+        <ul className="presets" aria-label="Saved items">
+          {presets.map((preset) => (
+            <li key={preset.id}>
+              <button
+                className="preset"
+                onClick={() => pick(preset)}
+                aria-pressed={memo === preset.name && typed === preset.amount}
+              >
+                <span>{preset.name}</span>
+                <span className="preset-price">{presetPrice(preset)}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       <input
         className="memo"
         value={memo}
@@ -500,6 +531,10 @@ function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sa
       </button>
     </section>
   );
+}
+
+function presetPrice(preset: Preset): string {
+  return preset.currency ? formatFiat(preset.amount, preset.currency) : formatBitcoin(preset.amount);
 }
 
 function CopyButton({ text, label }: { text: string; label: string }) {
@@ -638,6 +673,157 @@ function CurrencyNote({ currency }: { currency: Currency | null }) {
           ? 'Getting the price…'
           : `No current price for ${currency}. The keypad takes bitcoin until one arrives.`}
     </p>
+  );
+}
+
+/** Settings: the saved items the keypad offers. Add, change and remove. */
+function SavedItems({ register }: { register: Register }) {
+  const items = register.presets;
+  const fiat = register.fiat;
+  // null: the form is closed. An id that is not in the list: a new item.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [price, setPrice] = useState('');
+  const [currency, setCurrency] = useState<Currency | null>(fiat);
+  const [error, setError] = useState('');
+
+  const openForm = (preset?: Preset) => {
+    setEditing(preset?.id ?? crypto.randomUUID());
+    setName(preset?.name ?? '');
+    setPrice(preset ? priceText(preset) : '');
+    setCurrency(preset ? preset.currency : fiat);
+    setError('');
+  };
+  // A price can be in bitcoin, the register's currency, or the one the item already has.
+  const units = [...new Set<Currency | null>([fiat, currency, null])].filter(
+    (u): u is Currency | null => u === null || isCurrency(u),
+  );
+  const offKeypad = items.filter((p) => p.currency !== fiat).length;
+
+  return (
+    <div className="saved">
+      <div className="setting">
+        <span className="setting-label" id="saved-title">
+          Saved items
+        </span>
+        {editing === null && items.length < MAX_PRESETS && (
+          <button className="link" onClick={() => openForm()}>
+            Add an item
+          </button>
+        )}
+      </div>
+      {items.length === 0 && editing === null && (
+        <p className="muted setting-note">
+          Things you charge for often. One tap on the keypad fills the price and the memo.
+        </p>
+      )}
+      <ul className="saved-list" aria-labelledby="saved-title">
+        {items.map((preset) => (
+          <li key={preset.id}>
+            <span className="saved-name">{preset.name}</span>
+            <span className="saved-price">{presetPrice(preset)}</span>
+            <button
+              className="link"
+              onClick={() => openForm(preset)}
+              aria-label={`Change ${preset.name}`}
+            >
+              Change
+            </button>
+            <button
+              className="link"
+              onClick={() => {
+                if (editing === preset.id) setEditing(null);
+                register.removePreset(preset.id);
+              }}
+              aria-label={`Remove ${preset.name}`}
+            >
+              Remove
+            </button>
+          </li>
+        ))}
+      </ul>
+      {offKeypad > 0 && (
+        <p className="muted setting-note">
+          The keypad shows the items priced in{' '}
+          {fiat ? `${fiat}. With no current price it shows the bitcoin ones.` : 'bitcoin.'}
+        </p>
+      )}
+      {items.length >= MAX_PRESETS && editing === null && (
+        <p className="muted setting-note">
+          That is all {MAX_PRESETS} the register keeps. Remove one to add another.
+        </p>
+      )}
+      {editing !== null && (
+        <form
+          className="stack saved-form"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const amount = parsePrice(price, currency);
+            if (!name.trim()) return setError('Give the item a name.');
+            if (amount === null) {
+              return setError(
+                currency ? `Enter a price in ${currency}, like 4.50.` : 'Enter a whole bitcoin amount.',
+              );
+            }
+            try {
+              register.savePreset({ id: editing, name: name.trim(), currency, amount });
+              setEditing(null);
+            } catch (err) {
+              setError(message(err));
+            }
+          }}
+        >
+          <label className="field">
+            Name
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              maxLength={MAX_PRESET_NAME}
+              autoComplete="off"
+              autoFocus
+            />
+          </label>
+          <div className="saved-price-row">
+            <label className="field">
+              Price
+              <input
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                inputMode={currency && decimals(currency) ? 'decimal' : 'numeric'}
+                autoComplete="off"
+              />
+            </label>
+            <label className="field">
+              In
+              <select
+                value={currency ?? ''}
+                onChange={(e) => setCurrency(isCurrency(e.target.value) ? e.target.value : null)}
+                aria-label="Price is in"
+              >
+                {units.map((u) => (
+                  <option key={u ?? ''} value={u ?? ''}>
+                    {u ?? 'Bitcoin (₿)'}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {error && (
+            <p className="error" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="row">
+            <button className="btn primary" type="submit">
+              Save item
+            </button>
+            <button className="btn ghost" type="button" onClick={() => setEditing(null)}>
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+    </div>
   );
 }
 
@@ -872,7 +1058,7 @@ function WalletPanel({
               ),
             )}
           </ul>
-          {/* Fiat currency (#8) and saved items (#9) go in this section. */}
+          {/* Per-register settings go in this section, one row each. */}
           <section className="settings" aria-labelledby="settings-title">
             <h3 id="settings-title">Settings</h3>
             <div className="setting">
@@ -893,6 +1079,7 @@ function WalletPanel({
               </select>
             </div>
             <CurrencyNote currency={register.fiat} />
+            <SavedItems register={register} />
             <dl className="setting">
               <dt>Mint</dt>
               <dd className="mint-url">{register.state.mintUrl.replace(/^https?:\/\//, '')}</dd>

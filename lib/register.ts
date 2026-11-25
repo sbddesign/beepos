@@ -11,6 +11,7 @@ import type { Destination } from './destination';
 import { lnurlInvoice } from './lnurl';
 import { DEFAULT_CURRENCY, isCurrency, type Currency } from './fiat';
 import type { RegisterKeys } from './keys';
+import { MAX_PRESETS, cleanPresets, type Preset } from './presets';
 import { redeem, type Approval } from './reauth';
 import {
   balance,
@@ -258,6 +259,28 @@ export class Register {
 
   setFiat(fiat: Currency | null) {
     this.commit((s) => ({ ...s, settings: { fiat, at: Date.now() } }));
+  }
+
+  /** Saved items for the keypad, in the owner's order. */
+  get presets(): Preset[] {
+    return cleanPresets(this.state.presets?.items);
+  }
+
+  /** Adds an item, or replaces the one with the same id. */
+  savePreset(preset: Preset) {
+    const items = this.presets;
+    const at = items.findIndex((p) => p.id === preset.id);
+    if (at < 0 && items.length >= MAX_PRESETS) {
+      throw new Error(`A register keeps at most ${MAX_PRESETS} saved items. Remove one first.`);
+    }
+    const next = cleanPresets(at < 0 ? [...items, preset] : items.with(at, preset));
+    if (!next.some((p) => p.id === preset.id)) throw new Error('That item needs a name and a price.');
+    this.commit((s) => ({ ...s, presets: { at: Date.now(), items: next } }));
+  }
+
+  removePreset(id: string) {
+    const items = this.presets.filter((p) => p.id !== id);
+    this.commit((s) => ({ ...s, presets: { at: Date.now(), items } }));
   }
 
   // ---- sales ------------------------------------------------------------
