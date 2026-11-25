@@ -60,6 +60,16 @@ async function expectNoTotal(page: Page, total: string) {
   expect(seen).not.toContain(total.replace(/\D/g, ''));
 }
 
+// The bitcoin price, as the public sources would give it. `null` means neither answers.
+async function prices(page: Page, perBitcoin: Record<string, string> | null) {
+  await page.route('https://api.coinbase.com/**', (route) =>
+    perBitcoin
+      ? route.fulfill({ json: { data: { currency: 'BTC', rates: perBitcoin } } })
+      : route.abort(),
+  );
+  await page.route('https://blockchain.info/**', (route) => route.abort());
+}
+
 test('create a passkey, take a payment, and open the register on a second device', async ({
   context,
   page,
@@ -73,10 +83,19 @@ test('create a passkey, take a payment, and open the register on a second device
   page.on('requestfailed', (r) => slow.push(`failed ${r.method()} ${r.url()} ${r.failure()?.errorText}`));
   page.on('console', (m) => m.type() === 'error' && slow.push(`console: ${m.text()}`));
 
+  await prices(page, { USD: '50000' });
   await page.goto('/');
   await shot('1-lock');
   await page.getByRole('button', { name: 'Create a passkey' }).click();
-  await expect(page.getByTestId('amount')).toHaveText('₿0', { timeout: OPEN });
+  // A new register rings up in dollars. This one is switched to bitcoin only, and
+  // the choice has to follow the passkey to the second device below.
+  await expect(page.getByTestId('amount')).toHaveText('$0.00', { timeout: OPEN });
+  await openRegister(page);
+  await page.getByLabel('Currency').selectOption({ label: 'Bitcoin only' });
+  await expect(page.getByText('The keypad takes bitcoin amounts.')).toBeVisible();
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(page.getByTestId('amount')).toHaveText('₿0');
+  await expect(page.getByTestId('convert')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Charge', exact: true })).toBeDisabled();
 
   await sell(page, '2100', 'Flat white');
@@ -296,4 +315,79 @@ test('a passkey provider without PRF gets a clear message', async ({ context, pa
   await page.goto('/');
   await page.getByRole('button', { name: 'Create a passkey' }).click();
   await expect(page.locator('p.error')).toContainText('cannot derive keys');
+});
+
+test('ring up in dollars, then in yen', async ({ context, page }, testInfo) => {
+  await addAuthenticator(context, page);
+  await prices(page, { USD: '50000', JPY: '8000000' });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a passkey' }).click();
+  const amount = page.getByTestId('amount');
+  const convert = page.getByTestId('convert');
+  await expect(amount).toHaveText('$0.00', { timeout: OPEN });
+  await expect(convert).toHaveText('₿0 · price from just now');
+
+  // 12.50 at 50,000 a bitcoin is ₿25,000. The keys type cents.
+  for (const d of ['1', '2', '5', '0']) await page.getByRole('button', { name: d, exact: true }).click();
+  await expect(amount).toHaveText('$12.50');
+  await expect(convert).toContainText('₿25,000');
+  await page.screenshot({ path: testInfo.outputPath('fiat-keypad.png') });
+  await page.getByRole('button', { name: 'Charge $12.50' }).click();
+  await expect(page.getByTestId('invoice-amount')).toHaveText('₿25,000', { timeout: OPEN });
+  await expect(page.getByTestId('invoice-fiat')).toHaveText('$12.50');
+  expect(await page.getByTestId('invoice').inputValue()).toMatch(/^lnbc250u/);
+  await expect(page.getByRole('status').filter({ hasText: 'Paid' })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole('button', { name: 'New sale' }).click();
+
+  // The sale keeps both amounts.
+  await openRegister(page);
+  await expect(page.getByTestId('wallet-balance')).toHaveText('₿25,000', { timeout: OPEN });
+  await expect(page.getByText('+₿25,000')).toBeVisible();
+  await expect(page.getByText(/· \$12\.50$/)).toBeVisible();
+
+  // Yen has no cents: 1,000 yen at 8,000,000 a bitcoin is ₿12,500.
+  await page.getByLabel('Currency').selectOption('JPY');
+  await expect(page.getByTestId('currency-note')).toContainText('The keypad takes JPY');
+  await page.screenshot({ path: testInfo.outputPath('fiat-settings.png') });
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect(amount).toHaveText('¥0');
+  for (const d of ['1', '0', '00']) await page.getByRole('button', { name: d, exact: true }).click();
+  await expect(amount).toHaveText('¥1,000');
+  await expect(convert).toContainText('₿12,500');
+  await expect(page.getByRole('button', { name: 'Charge ¥1,000' })).toBeEnabled();
+});
+
+test('with no price to be had, the keypad takes bitcoin and says why', async ({ context, page }) => {
+  await addAuthenticator(context, page);
+  await prices(page, null);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a passkey' }).click();
+  await expect(page.getByTestId('convert')).toHaveText(
+    'No current price for USD. Enter the amount in bitcoin.',
+    { timeout: OPEN },
+  );
+  await expect(page.getByTestId('amount')).toHaveText('₿0');
+  for (const d of ['2', '1']) await page.getByRole('button', { name: d, exact: true }).click();
+  await expect(page.getByTestId('amount')).toHaveText('₿21');
+  await page.getByRole('button', { name: 'Charge ₿21' }).click();
+  await expect(page.getByTestId('invoice-amount')).toHaveText('₿21', { timeout: OPEN });
+  await expect(page.getByTestId('invoice-fiat')).toHaveCount(0);
+});
+
+test('a price that went out of date while the tab slept is not charged at', async ({ context, page }) => {
+  await addAuthenticator(context, page);
+  await prices(page, { USD: '50000' });
+  await page.clock.install();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a passkey' }).click();
+  await expect(page.getByTestId('amount')).toHaveText('$0.00', { timeout: OPEN });
+  for (const d of ['1', '2', '5', '0']) await page.getByRole('button', { name: d, exact: true }).click();
+  const charge = page.getByRole('button', { name: 'Charge $12.50' });
+  await expect(charge).toBeEnabled();
+  // The clock jumps 11 minutes with no timer firing: the screen still shows the old price.
+  await page.clock.setSystemTime(Date.now() + 11 * 60_000);
+  await charge.click();
+  await expect(page.getByRole('alert').filter({ hasText: 'The price is out of date' })).toBeVisible();
+  await expect(page.getByTestId('invoice-amount')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Charge', exact: true })).toBeDisabled();
 });

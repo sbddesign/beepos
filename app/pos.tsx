@@ -3,6 +3,18 @@
 import { bytesToHex, hexToBytes } from '@noble/hashes/utils.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { parseDestination, type Destination } from '@/lib/destination';
+import {
+  CURRENCIES,
+  FRESH_MS,
+  decimals,
+  fetchRates,
+  formatFiat,
+  isCurrency,
+  toBitcoin,
+  usableRate,
+  type Currency,
+  type Rates,
+} from '@/lib/fiat';
 import { formatBitcoin, timeAgo } from '@/lib/format';
 import { deriveKeys } from '@/lib/keys';
 import { PasskeyError, register as createPasskey, unlock } from '@/lib/passkey';
@@ -36,6 +48,79 @@ function beep() {
   } catch {
     // No sound is fine.
   }
+}
+
+// One copy of the prices for the whole page, so opening the drawer does not fetch again.
+let lastRates: Rates | null = null;
+let ratesInFlight: Promise<Rates | null> | null = null;
+
+function loadRates(): Promise<Rates | null> {
+  if (lastRates && Date.now() - lastRates.at < FRESH_MS) return Promise.resolve(lastRates);
+  ratesInFlight ??= fetchRates()
+    .then((rates) => (lastRates = rates))
+    .catch(() => lastRates)
+    .finally(() => {
+      ratesInFlight = null;
+    });
+  return ratesInFlight;
+}
+
+/**
+ * Bitcoin prices while a fiat currency is set, refreshed every minute the page is
+ * visible. `loading` is true until the first answer or failure. Re-renders twice a
+ * minute so an old price is noticed and its age reads right.
+ */
+function useRates(enabled: boolean): {
+  rates: Rates | null;
+  loading: boolean;
+  refresh: () => void;
+} {
+  const [rates, setRates] = useState<Rates | null>(lastRates);
+  const [loading, setLoading] = useState(enabled && !lastRates);
+  const [, setTick] = useState(0);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const refresh = useCallback(() => {
+    void loadRates().then((next) => {
+      if (!mounted.current) return;
+      setRates(next);
+      setLoading(false);
+      setTick((n) => n + 1);
+    });
+  }, []);
+  useEffect(() => {
+    if (!enabled) return;
+    let live = true;
+    const refresh = () => {
+      if (document.visibilityState !== 'visible') return;
+      void loadRates().then((next) => {
+        if (!live) return;
+        setRates(next);
+        setLoading(false);
+        setTick((n) => n + 1);
+      });
+    };
+    refresh();
+    const timer = setInterval(refresh, 30_000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      live = false;
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [enabled]);
+  return { rates, loading, refresh };
+}
+
+function saleFiat(sale: Sale): string | null {
+  return sale.fiat && isCurrency(sale.fiat.currency)
+    ? formatFiat(sale.fiat.amount, sale.fiat.currency)
+    : null;
 }
 
 /** Re-renders whenever the register's state or sync status changes. */
@@ -295,35 +380,63 @@ function mintLimits(register: Register): { min: number; max: number } {
 }
 
 function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sale) => void }) {
-  const [digits, setDigits] = useState('');
+  // What was typed, and the unit it was typed in. Digits typed as one unit are
+  // never read as another: when the unit changes they count as nothing.
+  const [entry, setEntry] = useState({ unit: '', digits: '' });
   const [memo, setMemo] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const amount = Number(digits || '0');
+  // With a fiat currency set and a current price, the keys type that currency
+  // (in its smallest unit) and the invoice is for the bitcoin it is worth now.
+  // Without a current price the keypad takes bitcoin: it never guesses.
+  const currency = register.fiat;
+  const { rates, loading, refresh } = useRates(currency !== null);
+  const rate = currency ? usableRate(rates, currency) : null;
+  const inFiat = currency !== null && rate !== null;
+  const unit = inFiat ? currency : '';
+  const digits = entry.unit === unit ? entry.digits : '';
+  const typed = Number(digits || '0');
+  const amount = inFiat ? toBitcoin(typed, currency, rate) : typed;
+  const shown = inFiat ? formatFiat(typed, currency) : formatBitcoin(amount);
   const limits = useMemo(() => mintLimits(register), [register]);
   const tooBig = amount > limits.max;
   const ready = amount >= limits.min && !tooBig && !busy;
 
   const press = useCallback((key: string) => {
     setError('');
-    setDigits((d) => {
-      if (key === 'back') return d.slice(0, -1);
+    setEntry((e) => {
+      const d = e.unit === unit ? e.digits : '';
+      if (key === 'back') return { unit, digits: d.slice(0, -1) };
       const next = (d + key).replace(/^0+/, '');
-      return next.length > MAX_DIGITS ? d : next;
+      return { unit, digits: next.length > MAX_DIGITS ? d : next };
     });
-  }, []);
+  }, [unit]);
 
   const charge = useCallback(async () => {
     if (!ready) return;
+    // The price on screen is from the last render. A tab that was asleep can wake
+    // with it long out of date, so it is checked again at the moment of charging.
+    if (inFiat && usableRate(rates, currency) !== rate) {
+      setEntry({ unit: '', digits: '' });
+      setError('The price is out of date. Nothing was charged. Enter the amount again.');
+      refresh();
+      return;
+    }
     setBusy(true);
     setError('');
     try {
-      onCharged(await register.charge(amount, memo));
+      onCharged(
+        await register.charge(
+          amount,
+          memo,
+          inFiat ? { currency, amount: typed, perBitcoin: rate } : undefined,
+        ),
+      );
     } catch (err) {
       setError(`Could not make the invoice. ${message(err)}`);
       setBusy(false);
     }
-  }, [ready, register, amount, memo, onCharged]);
+  }, [ready, register, amount, memo, onCharged, inFiat, currency, typed, rate, rates, refresh]);
 
   // A desktop keyboard works as the keypad unless the memo field has focus.
   useEffect(() => {
@@ -346,8 +459,17 @@ function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sa
   return (
     <section className="keypad-view" aria-label="New sale">
       <output className={`amount${digits ? '' : ' zero'}`} data-testid="amount" aria-live="polite">
-        {formatBitcoin(amount)}
+        {shown}
       </output>
+      {currency !== null && (
+        <p className="convert" role="status" data-testid="convert">
+          {inFiat
+            ? `${formatBitcoin(amount)} · price from ${timeAgo(rates!.at)}`
+            : loading
+              ? 'Getting the price…'
+              : `No current price for ${currency}. Enter the amount in bitcoin.`}
+        </p>
+      )}
       <p className="hint" role={error || tooBig ? 'alert' : undefined}>
         {error || (tooBig ? `The most one sale can take is ${formatBitcoin(limits.max)}.` : ' ')}
       </p>
@@ -374,7 +496,7 @@ function Keypad({ register, onCharged }: { register: Register; onCharged: (s: Sa
         ))}
       </div>
       <button className="btn primary charge" disabled={!ready} onClick={charge}>
-        {busy ? 'Making invoice…' : amount ? `Charge ${formatBitcoin(amount)}` : 'Charge'}
+        {busy ? 'Making invoice…' : amount ? `Charge ${shown}` : 'Charge'}
       </button>
     </section>
   );
@@ -452,6 +574,11 @@ function Invoice({
       <p className="amount small" data-testid="invoice-amount">
         {formatBitcoin(sale.amount)}
       </p>
+      {saleFiat(sale) && (
+        <p className="muted" data-testid="invoice-fiat">
+          {saleFiat(sale)}
+        </p>
+      )}
       {sale.memo && <p className="muted">{sale.memo}</p>}
       <a href={`lightning:${sale.request}`} className="qr-link" aria-label="Open in a wallet">
         <Qr value={`lightning:${sale.request}`.toUpperCase()} label="Lightning invoice QR code" />
@@ -478,11 +605,39 @@ function Paid({ sale, onDone }: { sale: Sale; onDone: () => void }) {
       </div>
       <h2 role="status">Paid</h2>
       <p className="amount small">{formatBitcoin(sale.amount)}</p>
+      {saleFiat(sale) && <p className="muted">{saleFiat(sale)}</p>}
       {sale.memo && <p className="muted">{sale.memo}</p>}
       <button className="btn primary" onClick={onDone} autoFocus>
         New sale
       </button>
     </section>
+  );
+}
+
+function currencyName(code: Currency): string {
+  try {
+    return new Intl.DisplayNames(undefined, { type: 'currency' }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
+
+/** Says what the keypad does with the chosen currency, and how old the price is. */
+function CurrencyNote({ currency }: { currency: Currency | null }) {
+  const { rates, loading } = useRates(currency !== null);
+  if (!currency) return <p className="muted setting-note">The keypad takes bitcoin amounts.</p>;
+  const rate = usableRate(rates, currency);
+  const one = 10 ** decimals(currency);
+  return (
+    <p className="muted setting-note" role="status" data-testid="currency-note">
+      {rate
+        ? `The keypad takes ${currency} and charges the bitcoin it is worth. ${formatFiat(one, currency)} is ${formatBitcoin(
+            toBitcoin(one, currency, rate),
+          )} (${rates!.source}, ${timeAgo(rates!.at)}).`
+        : loading
+          ? 'Getting the price…'
+          : `No current price for ${currency}. The keypad takes bitcoin until one arrives.`}
+    </p>
   );
 }
 
@@ -645,6 +800,7 @@ function WalletPanel({
                     <strong>{entry.sale.memo || 'Sale'}</strong>
                     <small>
                       {entry.sale.status === 'pending' ? 'Waiting for payment' : timeAgo(entry.at)}
+                      {saleFiat(entry.sale) && ` · ${saleFiat(entry.sale)}`}
                     </small>
                   </span>
                   <span className={entry.sale.status === 'paid' ? 'in' : 'dim'}>
@@ -719,6 +875,24 @@ function WalletPanel({
           {/* Fiat currency (#8) and saved items (#9) go in this section. */}
           <section className="settings" aria-labelledby="settings-title">
             <h3 id="settings-title">Settings</h3>
+            <div className="setting">
+              <label htmlFor="currency">Currency</label>
+              <select
+                id="currency"
+                value={register.fiat ?? ''}
+                onChange={(e) =>
+                  register.setFiat(isCurrency(e.target.value) ? e.target.value : null)
+                }
+              >
+                <option value="">Bitcoin only</option>
+                {CURRENCIES.map((code) => (
+                  <option key={code} value={code}>
+                    {code} · {currencyName(code)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <CurrencyNote currency={register.fiat} />
             <dl className="setting">
               <dt>Mint</dt>
               <dd className="mint-url">{register.state.mintUrl.replace(/^https?:\/\//, '')}</dd>
