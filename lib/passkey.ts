@@ -7,7 +7,7 @@ const PRF_SALT = new TextEncoder().encode('beepos/v1/prf');
 
 export class PasskeyError extends Error {
   constructor(
-    public kind: 'unsupported' | 'no-prf' | 'cancelled' | 'failed',
+    public kind: 'unsupported' | 'no-prf' | 'cancelled' | 'failed' | 'wrong-passkey',
     message: string,
   ) {
     super(message);

@@ -36,6 +36,7 @@ The register receives to one mint, chosen for you: [Minibits](https://mint.minib
 - A passkey is bound to the site's domain. A register made on one domain cannot be opened on another, except by its 12 words.
 - The passkey provider must support PRF: iCloud Keychain (iOS 18, macOS 15), Google Password Manager, 1Password, Bitwarden, and recent Windows Hello do.
 - While unlocked, the secret sits in the tab's session storage so a reload does not ask again. **Lock** clears it.
+- Cash out, showing a cash-out token again, and showing the 12 words each ask for the passkey again, and only the passkey that opened the register passes. This stops someone tapping buttons on an unlocked terminal. It does not stop someone who can run code in the tab (developer tools, a malicious extension): the keys are in memory while the register is open. **Lock** it when you step away.
 - The vault API has no rate limit yet.
 
 ## Run it

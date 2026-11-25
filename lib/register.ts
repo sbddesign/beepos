@@ -6,6 +6,7 @@ import {
   type Proof,
 } from '@cashu/cashu-ts';
 import type { RegisterKeys } from './keys';
+import { redeem, type Approval } from './reauth';
 import {
   balance,
   emptyState,
@@ -338,9 +339,13 @@ export class Register {
 
   // ---- cash out ---------------------------------------------------------
 
-  /** Moves `amount` out of the register into a Cashu token any wallet can redeem. */
-  async cashOut(amount: number): Promise<Cashout> {
+  /**
+   * Moves `amount` out of the register into a Cashu token any wallet can redeem.
+   * Needs a fresh passkey approval (see ./reauth), which it uses up.
+   */
+  async cashOut(amount: number, approval: Approval): Promise<Cashout> {
     if (amount <= 0 || amount > this.balance) throw new Error('Not enough in the register');
+    redeem(approval, this.keys);
     const inputs = this.state.proofs;
     const { keep, send } = await this.wallet.send(amount, inputs);
     const sent = send.map(toStored);
@@ -371,7 +376,21 @@ export class Register {
     return cashout;
   }
 
-  /** Takes an unredeemed cash-out token back into the register. */
+  /** The 12 backup words. Needs a fresh passkey approval, which it uses up. */
+  backupWords(approval: Approval): string {
+    redeem(approval, this.keys);
+    return this.keys.mnemonic;
+  }
+
+  /** An unredeemed cash-out token: bearer money, so it needs a fresh passkey approval. */
+  cashoutToken(id: string, approval: Approval): Cashout {
+    const cashout = this.state.cashouts.find((c) => c.id === id);
+    if (!cashout) throw new Error('Unknown cash out');
+    redeem(approval, this.keys);
+    return cashout;
+  }
+
+  /** Takes an unredeemed cash-out token back into the register. Safe: no approval needed. */
   async reclaim(id: string): Promise<void> {
     const cashout = this.state.cashouts.find((c) => c.id === id);
     if (!cashout || cashout.status !== 'out') return;
