@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { AboutVideo } from './video';
 
 // A public page: what beepos is, on video, and the way in. It opens no register
 // and reads nothing from the device.
@@ -24,17 +25,7 @@ export default function About() {
           <span className="brand">beepos</span>
         </header>
         <h1>The cash register from the future.</h1>
-        <video
-          className="about-video"
-          controls
-          playsInline
-          preload="metadata"
-          poster="/video/beepos-poster.jpg"
-          aria-label="A one-minute video about beepos"
-        >
-          <source src="/video/beepos.webm" type="video/webm" />
-          <source src="/video/beepos.mp4" type="video/mp4" />
-        </video>
+        <AboutVideo />
         <p className="muted">
           Take Bitcoin payments in seconds. One passkey sets it up, and opens your register on
           another compatible device.
