@@ -946,7 +946,7 @@ function WalletPanel({
   };
 
   const syncText = {
-    synced: 'Backed up. Any device with your passkey can open this register.',
+    synced: 'Backed up. Your passkey opens this register on your other compatible devices.',
     syncing: 'Saving…',
     offline: 'Offline. Saved on this device; it will back up when the connection returns.',
     local: 'Saved on this device only. No backup server is set up.',
@@ -1222,7 +1222,8 @@ function WalletPanel({
       {mode === 'backup' && (
         <div className="stack">
           <p className="muted">
-            Your passkey opens this register on any device it syncs to. If you ever lose the
+            Your passkey opens this register on other devices it syncs to, when the browser and
+            passkey provider there support it. If you ever lose the
             passkey, these 12 words restore the money in any Cashu wallet that supports seed
             restore, using this mint:
           </p>

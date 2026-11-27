@@ -146,7 +146,7 @@ test('create a passkey, take a payment, and open the register on a second device
   await expectNoTotal(page, '₿2,100');
   await openRegister(page);
   await expect(page.getByTestId('wallet-balance')).toHaveText('₿2,100', { timeout: OPEN });
-  await expect(page.getByText('Any device with your passkey can open this register')).toBeVisible();
+  await expect(page.getByText('Your passkey opens this register on your other compatible devices')).toBeVisible();
   await page.waitForTimeout(400); // let the drawer finish sliding in before the picture
   await shot('5-register');
   // The sales are one tap in, and the total stays on the menu.
