@@ -1,4 +1,5 @@
 import { Redis } from '@upstash/redis';
+import { MemoryRateLimiter, RedisRateLimiter, type RateLimiter } from './vault-limit';
 
 // One record per account: an opaque encrypted blob and a version number.
 // Writes are compare-and-swap on the version.
@@ -63,6 +64,13 @@ export class RedisVaultStore implements VaultStore {
 }
 
 let store: VaultStore | null | undefined;
+let limiter: RateLimiter | undefined;
+
+/** Counts vault requests: in the same Redis as the vault, or in memory without one. */
+export function getRateLimiter(): RateLimiter {
+  getVaultStore();
+  return (limiter ??= new MemoryRateLimiter());
+}
 
 /** null means no vault storage is configured: the register runs local-only. */
 export function getVaultStore(): VaultStore | null {
@@ -71,7 +79,9 @@ export function getVaultStore(): VaultStore | null {
   const token = process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN;
   if (url && token) {
     // Blobs are base64 strings; automatic JSON decoding would mangle them.
-    store = new RedisVaultStore(new Redis({ url, token, automaticDeserialization: false }));
+    const redis = new Redis({ url, token, automaticDeserialization: false });
+    store = new RedisVaultStore(redis);
+    limiter = new RedisRateLimiter(redis);
   } else if (process.env.NODE_ENV !== 'production' || process.env.BEEPOS_MEMORY_VAULT === '1') {
     store = new MemoryVaultStore();
   } else {
