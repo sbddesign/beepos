@@ -57,6 +57,11 @@ export type Cashout = {
   /** cashuB token. Bearer money until someone redeems it. */
   token: string;
   status: CashoutStatus;
+  /**
+   * Secrets of the ecash inside the token. While the token is out they are never
+   * spendable here, whatever `spent` has forgotten. Absent on older records.
+   */
+  secrets?: string[];
 };
 
 export type PayoutStatus = 'pending' | 'failed' | 'paid';
@@ -138,16 +143,25 @@ export function reserved(payouts: Payout[]): Set<string> {
   );
 }
 
+/** Secrets of ecash handed out in a cash-out token nobody has redeemed yet. Not spendable. */
+export function outstanding(cashouts: Cashout[]): Set<string> {
+  return new Set(cashouts.filter((c) => c.status === 'out').flatMap((c) => c.secrets ?? []));
+}
+
 /** Combines two copies of the state. Commutative, and merge(a, a) equals a. */
 export function merge(a: RegisterState, b: RegisterState): RegisterState {
-  const spent = [...new Set([...a.spent, ...b.spent])].slice(-MAX_SPENT);
+  // Sorted before the cap is applied, so both devices forget the same secrets.
+  const spent = [...new Set([...a.spent, ...b.spent])].sort().slice(-MAX_SPENT);
   const gone = new Set(spent);
   // Payouts first: ecash a pending payout holds must not come back as spendable
   // from a copy that predates the payout.
   const payouts = mergeById(a.payouts, b.payouts, (x, y) =>
     PAYOUT_RANK[y.status] > PAYOUT_RANK[x.status] ? y : x,
   );
-  const held = reserved(payouts);
+  const cashouts = mergeById(a.cashouts, b.cashouts, (x, y) =>
+    CASHOUT_RANK[y.status] > CASHOUT_RANK[x.status] ? y : x,
+  );
+  const held = new Set([...reserved(payouts), ...outstanding(cashouts)]);
   const proofs = new Map<string, StoredProof>();
   for (const p of [...a.proofs, ...b.proofs]) {
     if (!gone.has(p.secret) && !held.has(p.secret)) proofs.set(p.secret, p);
@@ -170,13 +184,11 @@ export function merge(a: RegisterState, b: RegisterState): RegisterState {
     ...(presets ? { presets } : {}),
     counters,
     proofs: [...proofs.values()].sort((x, y) => (x.secret < y.secret ? -1 : 1)),
-    spent: spent.sort(),
+    spent,
     sales: mergeById(a.sales, b.sales, (x, y) =>
       SALE_RANK[y.status] > SALE_RANK[x.status] ? y : x,
     ),
-    cashouts: mergeById(a.cashouts, b.cashouts, (x, y) =>
-      CASHOUT_RANK[y.status] > CASHOUT_RANK[x.status] ? y : x,
-    ),
+    cashouts,
     payouts,
   };
 }

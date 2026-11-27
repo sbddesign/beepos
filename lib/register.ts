@@ -18,6 +18,7 @@ import {
   emptyState,
   merge,
   parseState,
+  outstanding,
   reserved,
   sameState,
   type Cashout,
@@ -458,7 +459,7 @@ export class Register {
     this.commit((s) => {
       const gone = new Set([...s.spent, ...spent.map((p) => p.secret)]);
       // A restore also finds ecash set aside for a pending Lightning cash-out. It stays set aside.
-      const held = reserved(s.payouts);
+      const held = new Set([...reserved(s.payouts), ...outstanding(s.cashouts)]);
       return {
         ...s,
         spent: [...gone],
@@ -492,6 +493,7 @@ export class Register {
         { removeDleq: true },
       ),
       status: 'out',
+      secrets: sent.map((p) => p.secret),
     };
     // `keep` is the change plus every input the swap did not use.
     const kept = keep.map(toStored).filter((p) => !sent.some((x) => x.secret === p.secret));
