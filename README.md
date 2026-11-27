@@ -42,6 +42,7 @@ The register receives to one mint, chosen for you: [Minibits](https://mint.minib
 - Cash out, showing a cash-out token again, and showing the 12 words each ask for the passkey again, and only the passkey that opened the register passes. This stops someone tapping buttons on an unlocked terminal. It does not stop someone who can run code in the tab (developer tools, a malicious extension): the keys are in memory while the register is open. **Lock** it when you step away.
 - With a currency set (US dollars by default; change it or turn it off in Settings), the keypad takes that currency and the invoice is for the bitcoin it is worth at that moment. The price comes from Coinbase's public API, or Blockchain.com's if that fails, straight from the browser: the same request for everyone, with nothing about the register in it. It is refreshed every minute. A price more than 10 minutes old is not used; the keypad takes bitcoin until a new one arrives. A sale keeps the fiat amount and the price used.
 - The vault API allows 120 requests a minute per IP address and 60 per account, and refuses a request body over about 512 KiB without reading it. A register makes a handful of requests a minute.
+- Every response carries a content security policy: scripts, fonts and media only from this site, no framing by other sites, no plugins, connections over https only. It still allows inline scripts, because the pages are static and Next's own start-up script is inline.
 
 ## Run it
 
