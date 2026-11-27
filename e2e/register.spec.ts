@@ -678,3 +678,16 @@ test('the about page goes dark while the video plays and comes back when it stop
   await expect(page).toHaveURL(/\/$/);
   await expect(html).not.toHaveAttribute('data-watching');
 });
+
+test('a double click on the play button still plays the video', async ({ page }) => {
+  await page.goto('/about');
+  const play = page.getByRole('button', { name: 'Play the video' });
+  await expect(play).toBeVisible();
+  // The second click lands where the button was: on the video, whose own
+  // click-to-pause must not stop what the first click started.
+  await play.dblclick();
+  await expect
+    .poll(() => page.evaluate(() => document.querySelector('video')!.currentTime), { timeout: 10_000 })
+    .toBeGreaterThan(0.3);
+  expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(false);
+});
