@@ -19,7 +19,7 @@ Amounts follow [BIP-177](https://github.com/bitcoin/bips/blob/master/bip-0177.me
 
 Nothing but the passkey needs backing up.
 
-- The passkey's **PRF extension** returns the same 32 secret bytes every time, on every device the passkey syncs to. No server takes part in sign-in.
+- The passkey's **PRF extension** returns the same 32 secret bytes every time, on every device the passkey syncs to where the browser and passkey provider support PRF. No server takes part in sign-in.
 - Those bytes become a 12-word seed. The Cashu wallet makes all its secrets from that seed ([NUT-13](https://github.com/cashubtc/nuts/blob/main/13.md)), so the mint can give the ecash back to anyone who holds the seed ([NUT-09](https://github.com/cashubtc/nuts/blob/main/09.md)).
 - Invoices are locked to a key from the same secret ([NUT-20](https://github.com/cashubtc/nuts/blob/main/20.md)), so only this register can mint a paid invoice.
 - The register's state (ecash, open invoices, sales history with memos) is encrypted in the browser and stored as one blob per account on the server. The server sees a public key and ciphertext. Requests are signed with a key derived from the passkey.
