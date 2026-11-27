@@ -708,7 +708,16 @@ export class Register {
         spent: [...gone],
         proofs: dedupe([...s.proofs, ...back]).filter((p) => !gone.has(p.secret)),
         payouts: s.payouts.map((p) =>
-          p.id === id ? { ...p, status: 'paid', paidAt: Date.now(), inputs: [], fee } : p,
+          p.id === id
+            ? {
+                ...p,
+                status: 'paid',
+                paidAt: Date.now(),
+                inputs: [],
+                fee,
+                changeDue: !change,
+              }
+            : p,
         ),
       };
     });
@@ -738,10 +747,12 @@ export class Register {
         ? await this.wallet.checkMeltQuoteBolt12(id)
         : await this.wallet.checkMeltQuoteBolt11(id);
     if (quote.state === MeltQuoteState.PAID) {
-      const paid = this.closePayout(id, null, inputs);
       // The change was signed for outputs made from the seed, so a restore finds it.
-      await this.recover().catch(() => {});
-      return paid;
+      // It is marked as owed first: if the mint cannot be reached now, a later
+      // settle, on this device or another, fetches it.
+      this.closePayout(id, null, inputs);
+      await this.collectChange();
+      return this.state.payouts.find((p) => p.id === id)!;
     }
     if (quote.state !== MeltQuoteState.UNPAID) return payout;
     const lapsed = (payout.expiry + PAYOUT_GRACE_SECONDS) * 1000 < Date.now();
@@ -760,10 +771,35 @@ export class Register {
     return this.state.payouts.find((p) => p.id === id)!;
   }
 
-  /** Settles every pending Lightning cash-out. Errors on one do not stop the others. */
+  /**
+   * Fetches change owed by paid Lightning cash-outs with one restore from the seed.
+   * Returns false, leaving it owed, when the mint could not be reached.
+   */
+  private async collectChange(): Promise<boolean> {
+    const owed = new Set(
+      this.state.payouts.filter((p) => p.status === 'paid' && p.changeDue === true).map((p) => p.id),
+    );
+    if (!owed.size) return true;
+    try {
+      await this.recover();
+    } catch {
+      return false;
+    }
+    this.commit((s) => ({
+      ...s,
+      payouts: s.payouts.map((p) => (owed.has(p.id) ? { ...p, changeDue: false } : p)),
+    }));
+    return true;
+  }
+
+  /**
+   * Settles every pending Lightning cash-out and fetches any change still owed.
+   * Errors on one do not stop the others.
+   */
   async settlePayouts(): Promise<void> {
     const open = this.state.payouts.filter((p) => p.status === 'pending');
     await Promise.allSettled(open.map((p) => this.settlePayout(p.id)));
+    await this.collectChange();
   }
 
   /** Takes an unredeemed cash-out token back into the register. Safe: no approval needed. */

@@ -89,6 +89,12 @@ export type Payout = {
   /** What it cost on top of `amount`, when known. */
   fee?: number;
   paidAt?: number;
+  /**
+   * True when the payment is known to be paid but its change (the unused fee
+   * reserve) has not been fetched from the mint yet; false once it has. Absent on
+   * records written before this was tracked, which says nothing either way.
+   */
+  changeDue?: boolean;
 };
 
 export type RegisterState = {
@@ -136,6 +142,8 @@ function mergeById<T extends { id: string; createdAt: number }>(
   return [...byId.values()].sort((x, y) => x.createdAt - y.createdAt).slice(-MAX_HISTORY);
 }
 
+const CHANGE_RANK = (p: Payout) => (p.changeDue === false ? 2 : p.changeDue === true ? 1 : 0);
+
 /** Secrets of ecash set aside for Lightning cash-outs that have not ended. Not spendable. */
 export function reserved(payouts: Payout[]): Set<string> {
   return new Set(
@@ -155,9 +163,14 @@ export function merge(a: RegisterState, b: RegisterState): RegisterState {
   const gone = new Set(spent);
   // Payouts first: ecash a pending payout holds must not come back as spendable
   // from a copy that predates the payout.
-  const payouts = mergeById(a.payouts, b.payouts, (x, y) =>
-    PAYOUT_RANK[y.status] > PAYOUT_RANK[x.status] ? y : x,
-  );
+  const payouts = mergeById(a.payouts, b.payouts, (x, y) => {
+    if (PAYOUT_RANK[y.status] !== PAYOUT_RANK[x.status]) {
+      return PAYOUT_RANK[y.status] > PAYOUT_RANK[x.status] ? y : x;
+    }
+    // Same outcome on both: "fetched" beats "owed", and "owed" beats a record that
+    // does not say, whichever order the two are merged in.
+    return CHANGE_RANK(y) > CHANGE_RANK(x) ? y : x;
+  });
   const cashouts = mergeById(a.cashouts, b.cashouts, (x, y) =>
     CASHOUT_RANK[y.status] > CASHOUT_RANK[x.status] ? y : x,
   );

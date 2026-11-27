@@ -493,4 +493,60 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
     expect(paid.status).toBe('paid');
     expect(asked).toBe(1);
   }, 240_000);
+
+  it('fetches the change later when the mint could not be reached right after paying (#18)', async () => {
+    const prf = crypto.getRandomValues(new Uint8Array(32));
+    const keys = deriveKeys(prf);
+    const server = new MemoryVaultStore();
+    const till = await Register.open(keys, MINT, device(server));
+    await untilPaid(till, (await till.charge(100, '')).id);
+    const other = await Register.open(
+      deriveKeys(crypto.getRandomValues(new Uint8Array(32))),
+      MINT,
+      device(null),
+    );
+    const quote = await till.quotePayout(parseDestination((await other.charge(40, '')).request)!);
+
+    // The mint pays, but its answer is lost; and when the register then asks how it
+    // ended, the restore that would bring the change back fails too.
+    const melt = till.wallet.meltProofsBolt11.bind(till.wallet);
+    till.wallet.meltProofsBolt11 = async (...args) => {
+      await melt(...args);
+      throw new TypeError('Failed to fetch');
+    };
+    const restore = till.wallet.batchRestore.bind(till.wallet);
+    let down = true;
+    till.wallet.batchRestore = async (...args) => {
+      if (down) throw new TypeError('Failed to fetch');
+      return restore(...args);
+    };
+    // With the answer lost, the payout waits for the next check.
+    const sent = await till.payOut(quote, await approve(keys, async () => prf));
+    expect(sent.status).toBe('pending');
+    await till.settlePayouts();
+    expect(till.state.payouts[0]).toMatchObject({ status: 'paid', changeDue: true, inputs: [] });
+    const without = till.balance;
+
+    // Still unreachable: it stays owed. Another device is told so too.
+    await till.settlePayouts();
+    expect(till.state.payouts[0].changeDue).toBe(true);
+    await till.flush();
+    down = false;
+    const phone = await Register.open(keys, MINT, device(server));
+    expect(phone.state.payouts[0].changeDue).toBe(true);
+
+    // What the seed alone says the register holds.
+    const truth = await (await Register.open(keys, MINT, device(null))).recover();
+    expect(truth).toBeGreaterThanOrEqual(without);
+
+    // The next settle, here on the other device, fetches it and clears the mark.
+    await phone.settlePayouts();
+    expect(phone.state.payouts[0].changeDue).toBe(false);
+    expect(phone.balance).toBe(truth);
+    await phone.flush();
+    await till.pull();
+    expect(till.state.payouts[0].changeDue).toBe(false);
+    expect(till.balance).toBe(truth);
+    console.log('change retry', { without, truth, reserve: quote.feeReserve });
+  }, 240_000);
 });
