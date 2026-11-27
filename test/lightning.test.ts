@@ -199,12 +199,23 @@ describe('Lightning cash-outs in the register state', () => {
     }
   });
 
-  it('change that one device has fetched is not owed again after a merge', () => {
-    const owed = state({ payouts: [payout({ status: 'paid', inputs: [], changeDue: true })] });
-    const fetched = state({ payouts: [payout({ status: 'paid', inputs: [] })] });
-    expect(merge(owed, fetched).payouts[0].changeDue).toBeUndefined();
-    expect(merge(fetched, owed).payouts[0].changeDue).toBeUndefined();
-    expect(merge(owed, owed).payouts[0].changeDue).toBe(true);
+  it('change: fetched beats owed, and owed beats a record that does not say', () => {
+    const paid = (changeDue?: boolean) =>
+      state({
+        payouts: [payout({ status: 'paid', inputs: [], ...(changeDue === undefined ? {} : { changeDue }) })],
+      });
+    const [owed, fetched, legacy] = [paid(true), paid(false), paid()];
+    for (const [x, y, want] of [
+      [owed, fetched, false],
+      [owed, legacy, true], // an older tab's "paid" is not proof the change came back
+      [fetched, legacy, false],
+      [owed, owed, true],
+      [legacy, legacy, undefined],
+    ] as const) {
+      expect(merge(x, y).payouts[0].changeDue).toBe(want);
+      expect(merge(y, x).payouts[0].changeDue).toBe(want);
+      expect(merge(x, y)).toEqual(merge(y, x));
+    }
   });
 
   it('a payment that went through never gives the ecash back', () => {

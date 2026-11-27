@@ -703,7 +703,7 @@ export class Register {
                 paidAt: Date.now(),
                 inputs: [],
                 fee,
-                ...(change ? {} : { changeDue: true }),
+                changeDue: !change,
               }
             : p,
         ),
@@ -764,7 +764,9 @@ export class Register {
    * Returns false, leaving it owed, when the mint could not be reached.
    */
   private async collectChange(): Promise<boolean> {
-    const owed = new Set(this.state.payouts.filter((p) => p.changeDue).map((p) => p.id));
+    const owed = new Set(
+      this.state.payouts.filter((p) => p.status === 'paid' && p.changeDue === true).map((p) => p.id),
+    );
     if (!owed.size) return true;
     try {
       await this.recover();
@@ -773,11 +775,7 @@ export class Register {
     }
     this.commit((s) => ({
       ...s,
-      payouts: s.payouts.map((p) => {
-        if (!owed.has(p.id)) return p;
-        const { changeDue: _, ...rest } = p;
-        return rest;
-      }),
+      payouts: s.payouts.map((p) => (owed.has(p.id) ? { ...p, changeDue: false } : p)),
     }));
     return true;
   }

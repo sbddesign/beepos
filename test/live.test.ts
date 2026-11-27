@@ -531,11 +531,11 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
 
     // The next settle, here on the other device, fetches it and clears the mark.
     await phone.settlePayouts();
-    expect(phone.state.payouts[0].changeDue).toBeUndefined();
+    expect(phone.state.payouts[0].changeDue).toBe(false);
     expect(phone.balance).toBe(truth);
     await phone.flush();
     await till.pull();
-    expect(till.state.payouts[0].changeDue).toBeUndefined();
+    expect(till.state.payouts[0].changeDue).toBe(false);
     expect(till.balance).toBe(truth);
     console.log('change retry', { without, truth, reserve: quote.feeReserve });
   }, 240_000);
