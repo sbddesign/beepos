@@ -541,6 +541,12 @@ test('a price that went out of date while the tab slept is not charged at', asyn
   await page.goto('/');
   await page.getByRole('button', { name: 'Create a passkey' }).click();
   await expect(page.getByTestId('amount')).toHaveText('$0.00', { timeout: OPEN });
+  // With the idle lock on, eleven minutes away would lock the register first. This
+  // check is the one behind it, for a register set to stay open longer.
+  await openRegister(page);
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByLabel('Lock when idle').selectOption({ label: 'After 30 minutes' });
+  await page.getByRole('button', { name: 'Done' }).click();
   for (const d of ['1', '2', '5', '0']) await page.getByRole('button', { name: d, exact: true }).click();
   const charge = page.getByRole('button', { name: 'Charge $12.50' });
   await expect(charge).toBeEnabled();
@@ -729,4 +735,117 @@ test('a server copy that cannot be read is left alone, and the register says so'
   await expect(page.getByText('Reload the page to get the latest version.')).toBeVisible();
   // Nothing it sends claims to build on the copy it could not read.
   for (const body of writes) expect(JSON.parse(body).baseVersion).toBe(0);
+});
+
+test('the register locks itself when idle, but not while a sale or a cash-out is under way', async ({ context, page }) => {
+  await addAuthenticator(context, page);
+  await prices(page, null);
+  await page.clock.install();
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a passkey' }).click();
+  const amount = page.getByTestId('amount');
+  await expect(amount).toHaveText('₿0', { timeout: OPEN });
+  const unlock = page.getByRole('button', { name: 'Unlock with passkey' });
+  const qr = page.getByRole('img', { name: 'Lightning invoice QR code' });
+  const key = (d: string) => page.getByRole('button', { name: d, exact: true }).click();
+
+  // Ten minutes is the default. The test uses five, to fit inside the ten minutes
+  // the test mint gives an invoice.
+  await openRegister(page);
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await expect(page.getByLabel('Lock when idle')).toHaveValue('10');
+  await page.getByLabel('Lock when idle').selectOption({ label: 'After 5 minutes' });
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  // A sale waiting for its payment holds the register open past the limit.
+  for (const d of ['1', '00']) await key(d);
+  let paying = false;
+  await page.route('**/v1/mint/quote/bolt11/*', (route) => (paying ? route.continue() : route.abort()));
+  await page.getByRole('button', { name: 'Charge ₿100' }).click();
+  await expect(qr).toBeVisible({ timeout: OPEN });
+  await page.clock.fastForward('06:00');
+  await expect(qr).toBeVisible();
+
+  // It is paid with nobody touching the screen. The count starts then, not back
+  // at the last touch: Paid stays up, and the register is still open four minutes on.
+  paying = true;
+  const paid = page.getByRole('status').filter({ hasText: 'Paid' });
+  await expect(async () => {
+    await page.clock.fastForward(3000);
+    await expect(paid).toBeVisible({ timeout: 1000 });
+  }).toPass({ timeout: 60_000 });
+  await page.clock.fastForward('04:00');
+  await expect(paid).toBeVisible();
+  await expect(unlock).toHaveCount(0);
+  await page.getByRole('button', { name: 'New sale' }).click();
+
+  // Four minutes idle on the keypad: still open. A touch starts the count again.
+  await page.clock.fastForward('04:00');
+  await key('1');
+  await page.clock.fastForward('04:00');
+  await expect(amount).toHaveText('₿1');
+
+  // Work in the drawer holds it open too. A cash-out whose answer from the mint is
+  // slow crosses the limit and still finishes.
+  let release!: () => void;
+  const slow = new Promise<void>((r) => (release = r));
+  await page.route('**/v1/swap', async (route) => {
+    await slow;
+    await route.continue();
+  });
+  await openRegister(page);
+  await page.getByRole('button', { name: 'Cash out' }).click();
+  await page.getByLabel('Amount to cash out').fill('50');
+  await page.getByRole('button', { name: 'Make ₿50 token' }).click();
+  await expect(page.getByRole('button', { name: 'Making token…' })).toBeVisible();
+  // Six minutes pass on the clock (a jump, so the wallet's own five-minute request
+  // timeout does not fire), then the idle check runs.
+  await page.clock.setSystemTime((await page.evaluate(() => Date.now())) + 6 * 60_000);
+  await page.clock.fastForward('00:20');
+  await expect(unlock).toHaveCount(0);
+  release();
+  await expect(page.getByTestId('token')).toHaveValue(/^cashuB/, { timeout: OPEN });
+  await page.unroute('**/v1/swap');
+  await page.getByRole('button', { name: 'Done' }).last().click();
+  await page.getByRole('button', { name: 'Done' }).click();
+
+  // Left alone for six minutes: locked, and it takes the passkey.
+  await page.clock.fastForward('06:00');
+  await expect(unlock).toBeVisible();
+  await expect(amount).toHaveCount(0);
+  expect(await page.evaluate(() => sessionStorage.getItem('beepos:session'))).toBeNull();
+  await unlock.click();
+  await expect(amount).toBeVisible({ timeout: OPEN });
+
+  // A reload does not start the count over, even with no touch since unlocking.
+  await page.clock.fastForward('03:00');
+  await page.reload();
+  await expect(amount).toBeVisible({ timeout: OPEN });
+  await page.clock.fastForward('03:00');
+  await expect(unlock).toBeVisible();
+  await unlock.click();
+  await expect(amount).toBeVisible({ timeout: OPEN });
+
+  // A tab that slept past the limit: the first touch locks instead of typing.
+  await page.clock.setSystemTime((await page.evaluate(() => Date.now())) + 60 * 60_000);
+  await key('5');
+  await expect(unlock).toBeVisible();
+  // The press that locked it is not passed on to the lock screen for 0.7 s.
+  await page.clock.fastForward(1000);
+  await unlock.click();
+  await expect(amount).toHaveText('₿0', { timeout: OPEN });
+
+  // Unlocking after a long time away opens it; it does not lock again at once.
+  await page.clock.fastForward('04:00');
+  await expect(amount).toBeVisible();
+
+  // Set to Never, it stays open; the choice is saved with the register.
+  await openRegister(page);
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await expect(page.getByLabel('Lock when idle')).toHaveValue('5');
+  await page.getByLabel('Lock when idle').selectOption({ label: 'Never' });
+  await page.getByRole('button', { name: 'Done' }).click();
+  await page.clock.fastForward('02:00:00');
+  await expect(amount).toBeVisible();
+  await expect(unlock).toHaveCount(0);
 });

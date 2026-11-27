@@ -44,6 +44,8 @@ export type SaleFiat = {
 export type Settings = {
   /** Currency the keypad takes, or null for bitcoin only. */
   fiat: string | null;
+  /** Minutes without a touch before the register locks itself; 0 for never. Absent: the default. */
+  idleMinutes?: number;
   /** When it was last changed; the later change wins a merge. */
   at: number;
 };

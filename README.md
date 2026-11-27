@@ -36,6 +36,7 @@ The register receives to one mint, chosen for you: [Minibits](https://mint.minib
 - A passkey is bound to the site's domain. A register made on one domain cannot be opened on another, except by its 12 words.
 - The passkey provider must support PRF: iCloud Keychain (iOS 18, macOS 15), Google Password Manager, 1Password, Bitwarden, and recent Windows Hello do.
 - While unlocked, the secret sits in the tab's session storage so a reload does not ask again. **Lock** clears it.
+- The register locks itself after 10 minutes without a touch or a key (5, 10, 30 minutes or never, in Settings). A sale waiting for its payment keeps it open. Locking clears the secret from the tab, so the passkey is needed again. A reload inside that time still does not ask.
 - Cash out over Lightning is paid by the mint. You see the mint's fee reserve before you confirm; what it does not use comes back. The ecash for a payment is set aside and saved before the mint is asked to pay, so a payment that fails or is interrupted returns it to the register.
 - A Lightning address is looked up straight from the browser, so the address's host sees your IP address and the amount, and beepos's server sees nothing. Hosts that do not allow browser requests cannot be paid by address; paste an invoice from them instead.
 - BOLT12 offers are paid only on a mint that supports them. Minibits does not yet.

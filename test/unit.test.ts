@@ -360,3 +360,13 @@ describe('security headers', () => {
     expect(headers['Permissions-Policy']).not.toMatch(/publickey-credentials/);
   });
 });
+
+describe('the idle lock setting in the register state', () => {
+  it('rides along with the currency setting and survives a merge', () => {
+    const base = emptyState('m');
+    const set = { ...base, settings: { fiat: 'EUR', idleMinutes: 30, at: 9 } };
+    const older = { ...base, settings: { fiat: 'USD', at: 5 } };
+    expect(merge(set, older).settings).toEqual({ fiat: 'EUR', idleMinutes: 30, at: 9 });
+    expect(merge(older, set).settings).toEqual({ fiat: 'EUR', idleMinutes: 30, at: 9 });
+  });
+});

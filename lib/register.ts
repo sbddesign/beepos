@@ -97,6 +97,14 @@ function isMintError(err: unknown, code: number): boolean {
   return err instanceof MintOperationError && err.code === code;
 }
 
+/** How long the register may sit untouched before it locks, in minutes. 0 is never. */
+export const IDLE_CHOICES = [5, 10, 30, 0] as const;
+export const DEFAULT_IDLE_MINUTES = 10;
+
+function isIdleChoice(n: unknown): n is number {
+  return typeof n === 'number' && (IDLE_CHOICES as readonly number[]).includes(n);
+}
+
 export class Register {
   state: RegisterState;
   sync: SyncStatus = 'syncing';
@@ -326,7 +334,19 @@ export class Register {
   }
 
   setFiat(fiat: Currency | null) {
-    this.commit((s) => ({ ...s, settings: { fiat, at: Date.now() } }));
+    this.commit((s) => ({ ...s, settings: { ...s.settings, fiat, at: Date.now() } }));
+  }
+
+  /** Minutes without a touch before the register locks itself. 0 means never. */
+  get idleMinutes(): number {
+    const set = this.state.settings?.idleMinutes;
+    return isIdleChoice(set) ? set : DEFAULT_IDLE_MINUTES;
+  }
+
+  setIdleMinutes(idleMinutes: number) {
+    if (!isIdleChoice(idleMinutes)) return;
+    // Written out in full: a register that never chose a currency keeps the default one.
+    this.commit((s) => ({ ...s, settings: { fiat: this.fiat, idleMinutes, at: Date.now() } }));
   }
 
   /** Saved items for the keypad, in the owner's order. */
