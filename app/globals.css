@@ -239,7 +239,7 @@ summary:focus-visible {
 }
 
 .about-card,
-.about-card > :not(video) {
+.about-card > :not(.about-player) {
   transition:
     opacity 0.9s ease,
     border-color 0.9s ease;
@@ -249,7 +249,7 @@ summary:focus-visible {
   border-color: rgba(255, 255, 255, 0.05);
 }
 
-[data-watching] .about-card > :not(video) {
+[data-watching] .about-card > :not(.about-player) {
   opacity: 0.4;
 }
 
@@ -299,6 +299,13 @@ summary:focus-visible {
   text-wrap: balance;
 }
 
+.about-player {
+  position: relative;
+  width: 100%;
+  border-radius: 18px;
+  background: rgb(var(--ink));
+}
+
 .about-video {
   display: block;
   width: 100%;
@@ -306,6 +313,60 @@ summary:focus-visible {
   border-radius: 18px;
   border: 1px solid var(--line);
   background: rgb(var(--ink));
+  /* Not started: the poster sits back so the play button is the one thing to press. */
+  opacity: 0.28;
+  transition: opacity 0.5s ease;
+}
+
+.about-player.started .about-video {
+  opacity: 1;
+}
+
+/*
+ * The play button: a disc of clear glass, not amber. Get started is the amber
+ * control on this page. The whole poster is its hit area.
+ */
+.about-play {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 18px;
+  background: none;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.about-play svg {
+  box-sizing: content-box;
+  padding: 27px 25px 27px 29px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.34);
+  background:
+    radial-gradient(120% 90% at var(--spec-x) var(--spec-y), rgba(255, 255, 255, 0.3), transparent 60%),
+    rgba(var(--ink), 0.55);
+  -webkit-backdrop-filter: var(--frost-filter);
+  backdrop-filter: var(--frost-filter);
+  box-shadow:
+    var(--bevel),
+    0 18px 40px -12px rgba(0, 0, 0, 0.7);
+  transition: transform 0.12s ease-out;
+}
+
+.about-play:hover svg {
+  transform: scale(1.05);
+}
+
+.about-play:active svg {
+  transform: scale(0.97);
+}
+
+.about-play:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .about-card .muted {
@@ -1166,7 +1227,9 @@ summary {
   .till-btn,
   .about::before,
   .about-card,
-  .about-card > :not(video) {
+  .about-card > :not(.about-player),
+  .about-video,
+  .about-play svg {
     transition: none;
   }
 }
