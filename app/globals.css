@@ -509,7 +509,8 @@ summary:focus-visible {
 }
 
 .dot.offline,
-.dot.local {
+.dot.local,
+.dot.unreadable {
   background: var(--accent);
   box-shadow: 0 0 8px rgba(245, 183, 0, 0.8);
 }

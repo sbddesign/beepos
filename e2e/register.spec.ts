@@ -708,3 +708,25 @@ test('a double click on the play button still plays the video', async ({ page })
     .toBeGreaterThan(0.3);
   expect(await page.evaluate(() => document.querySelector('video')!.paused)).toBe(false);
 });
+
+test('a server copy that cannot be read is left alone, and the register says so', async ({ context, page }) => {
+  await addAuthenticator(context, page);
+  await prices(page, null);
+  const writes: string[] = [];
+  await page.route('**/api/vault', (route) => {
+    if (route.request().method() === 'PUT') {
+      writes.push(route.request().postData() ?? '');
+      return route.fulfill({ status: 409, json: { error: 'Version conflict', version: 7, blob: 'bm90IGEgdmF1bHQ=' } });
+    }
+    return route.fulfill({ json: { version: 7, blob: 'bm90IGEgdmF1bHQ=' } });
+  });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Create a passkey' }).click();
+  await expect(page.getByTestId('amount')).toHaveText('₿0', { timeout: OPEN });
+  await expect(page.getByRole('img', { name: 'Backup cannot be read: saved on this device only' })).toBeVisible();
+  await openRegister(page);
+  await expect(page.getByText('The backup on the server cannot be read by this version of beepos')).toBeVisible();
+  await expect(page.getByText('Reload the page to get the latest version.')).toBeVisible();
+  // Nothing it sends claims to build on the copy it could not read.
+  for (const body of writes) expect(JSON.parse(body).baseVersion).toBe(0);
+});
