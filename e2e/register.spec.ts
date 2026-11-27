@@ -563,7 +563,10 @@ test('the home screen links to the about page, and Get started comes back', asyn
   // The video is there, with both formats and a poster, and does not start by itself.
   const video = page.locator('video');
   await expect(video).toHaveAttribute('poster', '/video/beepos-poster.jpg');
-  await expect(video).toHaveAttribute('controls', '');
+  // Idle: a faded poster under one play button, and no controls yet.
+  await expect(video).not.toHaveAttribute('controls');
+  await expect(video).toHaveCSS('opacity', '0.28');
+  await expect(page.getByRole('button', { name: 'Play the video' })).toBeVisible();
   await expect(video).toHaveAttribute('playsinline', '');
   expect(await video.evaluate((v: HTMLVideoElement) => v.autoplay)).toBe(false);
   expect(await video.locator('source').evaluateAll((els) => els.map((s) => s.getAttribute('src')))).toEqual([
@@ -582,6 +585,49 @@ test('the home screen links to the about page, and Get started comes back', asyn
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('button', { name: 'Create a passkey' })).toBeVisible();
   await page.screenshot({ path: testInfo.outputPath('home.png') });
+});
+
+test('the play button starts the video and gives way to the controls', async ({ page }, testInfo) => {
+  await page.goto('/about');
+  const html = page.locator('html');
+  const video = page.locator('video');
+  const play = page.getByRole('button', { name: 'Play the video' });
+  const paused = () => video.evaluate((v: HTMLVideoElement) => v.paused);
+  await expect(play).toBeVisible();
+  await expect(video).not.toHaveAttribute('controls');
+  expect(await paused()).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('play-idle.png'), fullPage: true });
+
+  // It is a real button: the keyboard reaches it and presses it.
+  await play.focus();
+  await expect(play).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(play).toHaveCount(0);
+  await expect(video).toHaveAttribute('controls', '');
+  await expect(video).toHaveCSS('opacity', '1');
+  await expect.poll(paused).toBe(false);
+  await expect(html).toHaveAttribute('data-watching', '');
+  await page.screenshot({ path: testInfo.outputPath('play-playing.png'), fullPage: true });
+
+  // Paused: the controls stay and the big button does not come back.
+  await video.evaluate((v: HTMLVideoElement) => v.pause());
+  await expect(html).not.toHaveAttribute('data-watching');
+  await expect(video).toHaveAttribute('controls', '');
+  await expect(play).toHaveCount(0);
+
+  // At the end it is the faded poster and the button again, and the button replays it.
+  await video.evaluate((v: HTMLVideoElement) => {
+    v.currentTime = v.duration - 0.2;
+    return v.play();
+  });
+  await expect(play).toBeVisible({ timeout: 10_000 });
+  await expect(video).not.toHaveAttribute('controls');
+  await expect(video).toHaveCSS('opacity', '0.28');
+  await expect(html).not.toHaveAttribute('data-watching');
+  await play.click();
+  await expect(play).toHaveCount(0);
+  await expect.poll(paused).toBe(false);
+  expect(await video.evaluate((v: HTMLVideoElement) => v.currentTime)).toBeLessThan(5);
 });
 
 test('the about page goes dark while the video plays and comes back when it stops', async ({ page }, testInfo) => {

@@ -162,7 +162,9 @@ The keypad, invoice and Paid screens show only the sale in front of you. The dra
 
 ### The about page
 
-`/about` is the one public page: the product video and the way in. It is a single frost card (`.about-card`, at most 46rem wide) centred on the liquid: mark and name, one headline, the video at 16:9 with native controls and a poster, two lines of copy, an amber **Get started** that goes home, and one fine-print line. It opens no register and shows nothing private. The video never plays by itself.
+`/about` is the one public page: the product video and the way in. It is a single frost card (`.about-card`, at most 46rem wide) centred on the liquid: mark and name, one headline, the video at 16:9, two lines of copy, an amber **Get started** that goes home, and one fine-print line. It opens no register and shows nothing private. The video never plays by itself.
+
+Before it is started, and again after it ends, the video is its poster faded to 28% under one play button: an 88px disc of clear glass (`.about-play`; not amber, because Get started is the amber control here) whose hit area is the whole poster. There are no controls in that state. Pressing it starts the video at full strength with the browser's own controls, which stay through a pause.
 
 While it plays, the page goes dark around it (`html[data-watching]`): an ink veil at 86% covers the liquid (or the still gradient without WebGL), the card's border fades and everything on the card except the video drops to 40% (Get started to 75%, full again on hover or focus). It eases over 0.9 s both ways and returns on pause or at the end. With reduced motion the change is immediate.
 
