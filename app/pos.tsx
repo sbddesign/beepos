@@ -27,12 +27,13 @@ import {
   type Preset,
 } from '@/lib/presets';
 import { approve } from '@/lib/reauth';
-import { Register, browserEnv, type PayoutQuote } from '@/lib/register';
+import { IDLE_CHOICES, Register, browserEnv, type PayoutQuote } from '@/lib/register';
 import type { Cashout, Payout, Sale } from '@/lib/state';
 import { setMood } from './fx/liquid';
 import { Qr } from './qr';
 
 const SESSION_KEY = 'beepos:session';
+const ACTIVE_KEY = 'beepos:active';
 const KNOWN_KEY = 'beepos:known';
 const MAX_DIGITS = 9;
 
@@ -150,6 +151,8 @@ export function Pos({ mintUrl }: { mintUrl: string }) {
       const opened = await Register.open(deriveKeys(prf), mintUrl, browserEnv);
       sessionStorage.setItem(SESSION_KEY, bytesToHex(prf));
       localStorage.setItem(KNOWN_KEY, '1');
+      // So the lock screen offers Unlock, not Create, the next time it shows.
+      setKnown(true);
       setRegister(opened);
     },
     [mintUrl],
@@ -192,6 +195,7 @@ export function Pos({ mintUrl }: { mintUrl: string }) {
 
   const lock = useCallback(() => {
     sessionStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(ACTIVE_KEY);
     setRegister(null);
   }, []);
 
@@ -240,9 +244,59 @@ export function Pos({ mintUrl }: { mintUrl: string }) {
 
 type View = { name: 'keypad' } | { name: 'invoice'; saleId: string } | { name: 'paid'; saleId: string };
 
+/**
+ * Locks the register after `minutes` without a touch or a key. Time is read from
+ * the clock, not counted, so a tab that slept is judged by how long it really was.
+ * The first touch after the limit locks instead of doing what it would have done.
+ * The time of the last touch survives a reload, so reloading does not start over.
+ */
+function useIdleLock(minutes: number, hold: boolean, onLock: () => void) {
+  useEffect(() => {
+    if (!minutes) return;
+    const limit = minutes * 60_000;
+    const saved = Number(sessionStorage.getItem(ACTIVE_KEY));
+    let last = saved > 0 && saved <= Date.now() ? saved : Date.now();
+    const expired = () => !hold && Date.now() - last > limit;
+    const touch = (e: Event) => {
+      if (expired()) {
+        e.preventDefault();
+        e.stopPropagation();
+        // The lock screen appears under the finger before the press ends. Swallow
+        // the click that follows, or it would land on one of its buttons.
+        const swallow = (click: Event) => {
+          click.preventDefault();
+          click.stopPropagation();
+        };
+        window.addEventListener('click', swallow, { capture: true, once: true });
+        setTimeout(() => window.removeEventListener('click', swallow, true), 700);
+        onLock();
+        return;
+      }
+      last = Date.now();
+      sessionStorage.setItem(ACTIVE_KEY, String(last));
+    };
+    const check = () => {
+      // A sale waiting for its payment keeps the register open, and counts as use.
+      if (hold) last = Date.now();
+      else if (expired()) onLock();
+    };
+    check();
+    const events = ['pointerdown', 'keydown'] as const;
+    events.forEach((name) => window.addEventListener(name, touch, true));
+    document.addEventListener('visibilitychange', check);
+    const timer = setInterval(check, 15_000);
+    return () => {
+      events.forEach((name) => window.removeEventListener(name, touch, true));
+      document.removeEventListener('visibilitychange', check);
+      clearInterval(timer);
+    };
+  }, [minutes, hold, onLock]);
+}
+
 function Till({ register: reg, onLock }: { register: Register; onLock: () => void }) {
   const register = useRegister(reg);
   const [view, setView] = useState<View>({ name: 'keypad' });
+  useIdleLock(register.idleMinutes, view.name === 'invoice', onLock);
   // The drawer total is private: it is only in the page while the owner has the drawer open.
   const [drawerOpen, setDrawerOpen] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
@@ -1153,6 +1207,20 @@ function WalletPanel({
               {CURRENCIES.map((code) => (
                 <option key={code} value={code}>
                   {code} · {currencyName(code)}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="setting">
+            <label htmlFor="idle">Lock when idle</label>
+            <select
+              id="idle"
+              value={register.idleMinutes}
+              onChange={(e) => register.setIdleMinutes(Number(e.target.value))}
+            >
+              {IDLE_CHOICES.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes ? `After ${minutes} minutes` : 'Never'}
                 </option>
               ))}
             </select>
