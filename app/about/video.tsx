@@ -14,6 +14,10 @@ import { useEffect, useRef, useState } from 'react';
 export function AboutVideo() {
   const ref = useRef<HTMLVideoElement>(null);
   const [started, setStarted] = useState(false);
+  // A double click (or a second tap) on the big button would land on the video that
+  // takes its place, and the browser's own click-to-pause would stop it at once. So the
+  // video ignores the pointer for a moment after it is started.
+  const [settling, setSettling] = useState(false);
 
   useEffect(() => {
     const video = ref.current;
@@ -41,6 +45,8 @@ export function AboutVideo() {
     if (!video) return;
     if (video.ended) video.currentTime = 0;
     setStarted(true);
+    setSettling(true);
+    window.setTimeout(() => setSettling(false), 700);
     // Refused or failed (no network, no codec): back to the poster and the button.
     video.play().then(
       () => video.focus(),
@@ -59,6 +65,7 @@ export function AboutVideo() {
         poster="/video/beepos-poster.jpg"
         aria-label="A one-minute video about beepos"
         tabIndex={started ? 0 : -1}
+        style={settling ? { pointerEvents: 'none' } : undefined}
       >
         <source src="/video/beepos.webm" type="video/webm" />
         <source src="/video/beepos.mp4" type="video/mp4" />
