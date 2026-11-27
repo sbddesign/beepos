@@ -199,6 +199,14 @@ describe('Lightning cash-outs in the register state', () => {
     }
   });
 
+  it('change that one device has fetched is not owed again after a merge', () => {
+    const owed = state({ payouts: [payout({ status: 'paid', inputs: [], changeDue: true })] });
+    const fetched = state({ payouts: [payout({ status: 'paid', inputs: [] })] });
+    expect(merge(owed, fetched).payouts[0].changeDue).toBeUndefined();
+    expect(merge(fetched, owed).payouts[0].changeDue).toBeUndefined();
+    expect(merge(owed, owed).payouts[0].changeDue).toBe(true);
+  });
+
   it('a payment that went through never gives the ecash back', () => {
     const paid = state({
       spent: ['a', 'b'],

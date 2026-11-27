@@ -89,6 +89,11 @@ export type Payout = {
   /** What it cost on top of `amount`, when known. */
   fee?: number;
   paidAt?: number;
+  /**
+   * Set when the payment is known to be paid but its change (the unused fee
+   * reserve) has not been fetched from the mint yet. Cleared once it has.
+   */
+  changeDue?: boolean;
 };
 
 export type RegisterState = {
@@ -155,9 +160,14 @@ export function merge(a: RegisterState, b: RegisterState): RegisterState {
   const gone = new Set(spent);
   // Payouts first: ecash a pending payout holds must not come back as spendable
   // from a copy that predates the payout.
-  const payouts = mergeById(a.payouts, b.payouts, (x, y) =>
-    PAYOUT_RANK[y.status] > PAYOUT_RANK[x.status] ? y : x,
-  );
+  const payouts = mergeById(a.payouts, b.payouts, (x, y) => {
+    if (PAYOUT_RANK[y.status] !== PAYOUT_RANK[x.status]) {
+      return PAYOUT_RANK[y.status] > PAYOUT_RANK[x.status] ? y : x;
+    }
+    // Same outcome on both: the copy that has already fetched its change wins,
+    // whichever order the two are merged in.
+    return !!x.changeDue === !!y.changeDue ? x : x.changeDue ? y : x;
+  });
   const cashouts = mergeById(a.cashouts, b.cashouts, (x, y) =>
     CASHOUT_RANK[y.status] > CASHOUT_RANK[x.status] ? y : x,
   );
