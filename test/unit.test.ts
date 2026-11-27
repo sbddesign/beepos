@@ -6,6 +6,7 @@ import { approve, redeem } from '@/lib/reauth';
 import { emptyState, merge, sameState, type RegisterState } from '@/lib/state';
 import { signRequest, verifyRequest } from '@/lib/vault-auth';
 import { open, seal } from '@/lib/vault-crypto';
+import { ACCOUNT_LIMIT, IP_LIMIT, MemoryRateLimiter, clientAddress } from '@/lib/vault-limit';
 import { MemoryVaultStore, parseRecord } from '@/lib/vault-store';
 import { GET, PUT } from '@/app/api/vault/route';
 
@@ -184,6 +185,90 @@ describe('vault API', () => {
     expect((await call('PUT', JSON.stringify({ baseVersion: 0, blob: 'not base64!' }))).status).toBe(400);
     expect((await call('PUT', JSON.stringify({ baseVersion: -1, blob: 'AAAA' }))).status).toBe(400);
     expect((await call('PUT', 'nope')).status).toBe(400);
+  });
+
+  it('limits requests per address before checking the signature', async () => {
+    const from = (ip: string) =>
+      GET(new Request('http://localhost/api/vault', { headers: { 'x-forwarded-for': `${ip}, 10.0.0.1` } }));
+    for (let i = 0; i < IP_LIMIT; i++) expect((await from('203.0.113.7')).status).toBe(401);
+    const over = await from('203.0.113.7');
+    expect(over.status).toBe(429);
+    expect(over.headers.get('retry-after')).toBe('60');
+    // Somebody else is not affected.
+    expect((await from('203.0.113.8')).status).toBe(401);
+  });
+
+  it('limits requests per account, whatever address they come from', async () => {
+    const key = deriveKeys(new Uint8Array(32).fill(41)).authPrivkey;
+    const from = (i: number) =>
+      GET(
+        new Request('http://localhost/api/vault', {
+          headers: { Authorization: signRequest(key, 'GET', ''), 'x-forwarded-for': `198.51.100.${i}` },
+        }),
+      );
+    for (let i = 0; i < ACCOUNT_LIMIT; i++) expect((await from(i)).status).toBe(200);
+    expect((await from(200)).status).toBe(429);
+    // Another account from one of those addresses still gets through.
+    const other = deriveKeys(new Uint8Array(32).fill(42)).authPrivkey;
+    const res = await GET(
+      new Request('http://localhost/api/vault', {
+        headers: { Authorization: signRequest(other, 'GET', ''), 'x-forwarded-for': '198.51.100.1' },
+      }),
+    );
+    expect(res.status).toBe(200);
+  });
+
+  it('refuses an oversized body without reading it all', async () => {
+    // Declared too long: not read at all.
+    let pulled = 0;
+    const declared = await PUT(
+      new Request('http://localhost/api/vault', {
+        method: 'PUT',
+        headers: { 'content-length': String(10 * 1024 * 1024), 'x-forwarded-for': '192.0.2.1' },
+        body: new ReadableStream({
+          pull(c) {
+            pulled++;
+            c.enqueue(new Uint8Array(1024));
+          },
+        }),
+        duplex: 'half',
+      } as RequestInit),
+    );
+    expect(declared.status).toBe(413);
+    expect(pulled).toBeLessThanOrEqual(1);
+
+    // No length declared: reading stops soon after the cap, not at the end.
+    let sent = 0;
+    const endless = await PUT(
+      new Request('http://localhost/api/vault', {
+        method: 'PUT',
+        headers: { 'x-forwarded-for': '192.0.2.2' },
+        body: new ReadableStream({
+          pull(c) {
+            sent += 64 * 1024;
+            if (sent > 64 * 1024 * 1024) c.close();
+            else c.enqueue(new Uint8Array(64 * 1024));
+          },
+        }),
+        duplex: 'half',
+      } as RequestInit),
+    );
+    expect(endless.status).toBe(413);
+    expect(sent).toBeLessThan(1024 * 1024);
+  });
+
+  it('counts a window and then starts a new one', async () => {
+    let now = 1_000;
+    const limiter = new MemoryRateLimiter(() => now);
+    expect(await limiter.hit('k', 2)).toBe(true);
+    expect(await limiter.hit('k', 2)).toBe(true);
+    expect(await limiter.hit('k', 2)).toBe(false);
+    expect(await limiter.hit('other', 2)).toBe(true);
+    now += 60_001;
+    expect(await limiter.hit('k', 2)).toBe(true);
+    expect(clientAddress(new Headers({ 'x-forwarded-for': ' 1.2.3.4 , 5.6.7.8' }))).toBe('1.2.3.4');
+    expect(clientAddress(new Headers({ 'x-real-ip': '9.9.9.9' }))).toBe('9.9.9.9');
+    expect(clientAddress(new Headers())).toBe('unknown');
   });
 
   it('memory store refuses a write from a stale version', async () => {
