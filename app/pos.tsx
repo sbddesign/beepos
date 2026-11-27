@@ -377,6 +377,7 @@ function SyncDot({ status }: { status: Register['sync'] }) {
     syncing: 'Saving…',
     offline: 'Offline: saved on this device',
     local: 'Saved on this device only',
+    unreadable: 'Backup cannot be read: saved on this device only',
   }[status];
   return <span className={`dot ${status}`} title={label} aria-label={label} role="img" />;
 }
@@ -950,6 +951,8 @@ function WalletPanel({
     syncing: 'Saving…',
     offline: 'Offline. Saved on this device; it will back up when the connection returns.',
     local: 'Saved on this device only. No backup server is set up.',
+    unreadable:
+      'The backup on the server cannot be read by this version of beepos, so it was left alone. Sales are saved on this device only. Reload the page to get the latest version.',
   }[register.sync];
 
   const titles: Record<Mode, string> = {

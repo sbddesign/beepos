@@ -329,7 +329,7 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
         await till.pull();
         await till.flush();
         expect(await server.get(keys.accountId)).toEqual(theirs);
-        expect(till.sync).toBe('offline');
+        expect(till.sync).toBe('unreadable');
       }
     }
     expect(mine.version).toBeLessThan((await server.get(keys.accountId))!.version);
@@ -340,6 +340,16 @@ describe.runIf(process.env.BEEPOS_LIVE === '1')('register against a live mint', 
     expect(local.sales.map((x) => x.memo)).toEqual(['first', 'a', 'b', 'c', 'a', 'b', 'c']);
     const again = await Register.open(keys, MINT, env);
     expect(again.state.sales).toHaveLength(7);
+    expect(again.sync).toBe('unreadable');
+
+    // A plain network failure is still just "offline", and a readable copy clears it.
+    const down = { ...env, vault: async () => Promise.reject(new TypeError('Failed to fetch')) };
+    expect((await Register.open(keys, MINT, down)).sync).toBe('offline');
+    const base = (await server.get(keys.accountId))!.version;
+    await server.put(keys.accountId, base, saved.blob);
+    await again.pull();
+    await again.flush();
+    expect(again.sync).toBe('synced');
   }, 240_000);
 
   it('a write that overlaps a read never drops what the server had (#16)', async () => {

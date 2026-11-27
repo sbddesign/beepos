@@ -32,7 +32,14 @@ import { signRequest } from './vault-auth';
 import { open, seal } from './vault-crypto';
 
 /** 'local' = no vault server configured; the state lives in this browser only. */
-export type SyncStatus = 'syncing' | 'synced' | 'offline' | 'local';
+/**
+ * 'unreadable' = the server holds a copy this build cannot decrypt or understand
+ * (damage, or a newer beepos wrote it). That copy is left alone: later saves still go
+ * out under the last version this register read, and the server refuses them.
+ */
+export type SyncStatus = 'syncing' | 'synced' | 'offline' | 'local' | 'unreadable';
+
+class UnreadableVault extends Error {}
 
 type VaultRecord = { version: number; blob: string | null };
 
@@ -253,8 +260,8 @@ export class Register {
       } else {
         this.setSync('offline');
       }
-    } catch {
-      this.setSync('offline');
+    } catch (err) {
+      this.setSync(err instanceof UnreadableVault ? 'unreadable' : 'offline');
     }
   }
 
@@ -273,7 +280,12 @@ export class Register {
       void this.persist();
       return;
     }
-    const remote = parseState(await open(this.keys.vaultKey, record.blob), this.state.mintUrl);
+    let remote: RegisterState;
+    try {
+      remote = parseState(await open(this.keys.vaultKey, record.blob), this.state.mintUrl);
+    } catch {
+      throw new UnreadableVault();
+    }
     const merged = merge(this.state, remote);
     this.version = record.version;
     void this.persist();
@@ -299,8 +311,8 @@ export class Register {
       const unsaved = !res.body.blob && !sameState(this.state, emptyState(this.state.mintUrl));
       if (this.dirty || unsaved) this.schedulePush();
       else this.setSync('synced');
-    } catch {
-      this.setSync('offline');
+    } catch (err) {
+      this.setSync(err instanceof UnreadableVault ? 'unreadable' : 'offline');
     }
   }
 

@@ -213,7 +213,7 @@ The drawer closes with Done, Escape, or a tap on the scrim, and focus returns to
 
 - **Focus:** a 3px `--focus` outline, offset 2px, on every interactive element. Never remove it.
 - **Disabled:** 45% opacity, no press effect, no ripple.
-- **Sync dot:** grey while saving, green and glowing when backed up, amber when offline or kept on this device only. It always carries a text label for screen readers and as a tooltip.
+- **Sync dot:** grey while saving, green and glowing when backed up, amber when offline, kept on this device only, or when the server's copy cannot be read. It always carries a text label for screen readers and as a tooltip.
 - **Errors** are `--bad` text with `role="alert"`. Status changes use `role="status"`. The amount is an `<output>` with `aria-live="polite"`.
 - A desktop keyboard works as the keypad: digits, Backspace, Enter to charge.
 
