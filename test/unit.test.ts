@@ -4,6 +4,7 @@ import { deriveKeys } from '@/lib/keys';
 import { PasskeyError } from '@/lib/passkey';
 import { approve, redeem } from '@/lib/reauth';
 import { emptyState, merge, sameState, type RegisterState } from '@/lib/state';
+import { contentSecurityPolicy, securityHeaders } from '@/lib/security-headers';
 import { signRequest, verifyRequest } from '@/lib/vault-auth';
 import { open, seal } from '@/lib/vault-crypto';
 import { ACCOUNT_LIMIT, IP_LIMIT, MemoryRateLimiter, clientAddress } from '@/lib/vault-limit';
@@ -317,5 +318,45 @@ describe('vault API', () => {
     expect(parseRecord('12:AAAA+/==')).toEqual({ version: 12, blob: 'AAAA+/==' });
     expect(parseRecord(null)).toBeNull();
     expect(parseRecord(['version', '1'])).toBeNull();
+  });
+});
+
+describe('security headers', () => {
+  const policy = (dev: boolean) =>
+    Object.fromEntries(
+      contentSecurityPolicy(dev)
+        .split('; ')
+        .map((d) => [d.split(' ')[0], d.split(' ').slice(1)]),
+    );
+
+  it('keeps scripts, frames and plugins to this origin in production', () => {
+    const p = policy(false);
+    expect(p['default-src']).toEqual(["'self'"]);
+    expect(p['script-src']).toEqual(["'self'", "'unsafe-inline'"]);
+    expect(p['object-src']).toEqual(["'none'"]);
+    expect(p['frame-src']).toEqual(["'none'"]);
+    expect(p['frame-ancestors']).toEqual(["'none'"]);
+    expect(p['base-uri']).toEqual(["'self'"]);
+    expect(p['form-action']).toEqual(["'self'"]);
+    // The mint, the price hosts and Lightning address hosts: any https, nothing plainer.
+    expect(p['connect-src']).toEqual(["'self'", 'https:']);
+    expect(p).toHaveProperty('upgrade-insecure-requests');
+    expect(contentSecurityPolicy(false)).not.toMatch(/unsafe-eval|\*|http:|ws:/);
+  });
+
+  it('loosens only what the dev server needs', () => {
+    const p = policy(true);
+    expect(p['script-src']).toContain("'unsafe-eval'");
+    expect(p['connect-src']).toEqual(["'self'", 'https:', 'ws:', 'http://localhost:*']);
+    expect(p).not.toHaveProperty('upgrade-insecure-requests');
+    expect(p['frame-ancestors']).toEqual(["'none'"]);
+  });
+
+  it('sends the other headers too', () => {
+    const headers = Object.fromEntries(securityHeaders(false).map((h) => [h.key, h.value]));
+    expect(headers['X-Frame-Options']).toBe('DENY');
+    expect(headers['X-Content-Type-Options']).toBe('nosniff');
+    expect(headers['Referrer-Policy']).toBe('no-referrer');
+    expect(headers['Permissions-Policy']).not.toMatch(/publickey-credentials/);
   });
 });
