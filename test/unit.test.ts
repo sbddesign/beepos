@@ -148,6 +148,42 @@ describe('state merge', () => {
   });
 });
 
+describe('the cap on remembered spent secrets (#17)', () => {
+  const proof = (secret: string, amount = 1) => ({ id: 'k', amount, secret, C: 'c' });
+  const many = (prefix: string, n: number) =>
+    Array.from({ length: n }, (_, i) => `${prefix}${String(i).padStart(5, '0')}`);
+
+  it('two devices over the cap agree on what to forget', () => {
+    const a = { ...emptyState('m'), spent: many('a', 3000) };
+    const b = { ...emptyState('m'), spent: many('b', 3000) };
+    expect(merge(a, b).spent).toHaveLength(5000);
+    expect(merge(a, b)).toEqual(merge(b, a));
+    expect(sameState(merge(a, b), merge(b, a))).toBe(true);
+    expect(merge(merge(a, b), merge(a, b))).toEqual(merge(a, b));
+  });
+
+  it('never brings back ecash that is out in an unredeemed token', () => {
+    const token = {
+      id: 'c1',
+      amount: 1,
+      createdAt: 1,
+      token: 'cashuB…',
+      status: 'out' as const,
+      secrets: ['a-token'],
+    };
+    // 'a-token' sorts first, so it is what the cap forgets.
+    const now = { ...emptyState('m'), spent: ['a-token', ...many('z', 5000)], cashouts: [token] };
+    const stale = { ...emptyState('m'), proofs: [proof('a-token')] };
+    expect(merge(now, now).spent).not.toContain('a-token');
+    for (const merged of [merge(now, stale), merge(stale, now)]) {
+      expect(merged.proofs).toEqual([]);
+    }
+    // Taken back or redeemed, the old secret is no longer held by the record.
+    const back = { ...now, spent: [], cashouts: [{ ...token, status: 'reclaimed' as const }] };
+    expect(merge(back, stale).proofs).toHaveLength(1);
+  });
+});
+
 describe('vault API', () => {
   const { authPrivkey } = deriveKeys(prf);
   const call = (method: 'GET' | 'PUT', body = '', key = authPrivkey) =>
