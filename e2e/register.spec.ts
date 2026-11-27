@@ -578,7 +578,24 @@ test('the home screen links to the about page, and Get started comes back', asyn
   }
   // Nothing wider than the screen, and the way in is on it.
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  expect(await page.locator('meta[property="og:image"]').getAttribute('content')).toMatch(/opengraph-image/);
+  // A shared link shows the preview picture, at an absolute address, on both pages.
+  for (const route of ['/about', '/']) {
+    await page.goto(route);
+    for (const [sel, name] of [
+      ['meta[property="og:image"]', 'opengraph-image'],
+      ['meta[name="twitter:image"]', 'twitter-image'],
+    ]) {
+      const src = await page.locator(sel).getAttribute('content');
+      expect(src).toMatch(new RegExp(`^https?://[^/]+${route === '/' ? '' : route}/${name}`));
+      const res = await page.request.get(new URL(src!).pathname + new URL(src!).search);
+      expect(res.status()).toBe(200);
+      expect(res.headers()['content-type']).toBe('image/jpeg');
+    }
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute('content', 'summary_large_image');
+    await expect(page.locator('meta[property="og:image:width"]')).toHaveAttribute('content', '1200');
+    await expect(page.locator('meta[property="og:image:alt"]')).toHaveAttribute('content', /cash register from the future/);
+  }
+  await page.goto('/about');
   await page.screenshot({ path: testInfo.outputPath('about.png'), fullPage: true });
 
   await page.getByRole('link', { name: 'Get started' }).click();

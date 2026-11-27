@@ -13,10 +13,17 @@ const manrope = Manrope({
 // Share images need absolute addresses. Previews and other hosts can set their own.
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://beepos.sbd.design';
 
+const TITLE = 'beepos';
+const DESCRIPTION = 'The cash register from the future. Start receiving Bitcoin today.';
+
+// The preview picture is app/opengraph-image.jpg (and twitter-image.jpg), rendered
+// by the video package: see video/README.md.
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: 'beepos',
-  description: 'The cash register from the future. Start receiving Bitcoin today.',
+  title: TITLE,
+  description: DESCRIPTION,
+  openGraph: { title: TITLE, description: DESCRIPTION, type: 'website', url: '/', siteName: 'beepos' },
+  twitter: { card: 'summary_large_image', title: TITLE, description: DESCRIPTION },
   manifest: '/manifest.webmanifest',
   icons: { icon: '/icon.svg' },
   appleWebApp: { capable: true, title: 'beepos', statusBarStyle: 'black-translucent' },

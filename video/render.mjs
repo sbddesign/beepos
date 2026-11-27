@@ -26,4 +26,11 @@ run(['ffmpeg', '-y', '-i', master, '-vf', 'scale=1280:720:flags=lanczos', '-c:v'
   '-crf', '36', '-row-mt', '1', '-map_metadata', '-1',
   ...(music ? ['-c:a', 'libopus', '-b:a', '96k'] : audio), path.join(out, 'beepos.webm')]);
 run(['still', 'Poster', path.join(out, 'beepos-poster.jpg'), '--image-format=jpeg', '--jpeg-quality=88', '--scale=0.6667']);
-console.log(`Wrote ${out}/beepos.mp4, beepos.webm and beepos-poster.jpg`);
+// The link preview, used by / and /about.
+const app = path.join(here, '..', 'app');
+const share = path.join(app, 'opengraph-image.jpg');
+run(['still', 'Share', share, '--image-format=jpeg', '--jpeg-quality=88', '--scale=0.625']);
+for (const copy of ['twitter-image.jpg', 'about/opengraph-image.jpg', 'about/twitter-image.jpg']) {
+  execFileSync('cp', [share, path.join(app, copy)]);
+}
+console.log(`Wrote ${out}/beepos.mp4, beepos.webm, beepos-poster.jpg and the share images in app/`);

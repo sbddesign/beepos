@@ -383,7 +383,7 @@ function Caption({ f, from, to, x, y, size = 92, width = 640, align = 'left', ch
 
 // ---- the film -------------------------------------------------------------
 
-export function Film({ music, at }: { music: string | null; at?: number }) {
+export function Film({ music, at, share }: { music: string | null; at?: number; share?: boolean }) {
   const live = useCurrentFrame();
   const f = at ?? live;
   const root = useRef<HTMLDivElement>(null);
@@ -687,7 +687,7 @@ export function Film({ music, at }: { music: string | null; at?: number }) {
 
         {/* 8. The end card. */}
         {end > 0.001 && (
-          <div className="endcard" style={{ opacity: end, gap: 30 }}>
+          <div className="endcard" style={{ opacity: end, gap: 30, transform: share ? 'scale(1.5)' : undefined }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 26, transform: `translateY(${(1 - end) * 24}px)` }}>
               <div style={{ filter: 'drop-shadow(0 16px 40px rgba(245,183,0,.35))' }}>
                 <Logo size={112} />
@@ -701,10 +701,17 @@ export function Film({ music, at }: { music: string | null; at?: number }) {
               <br />
               Start receiving Bitcoin today.
             </div>
-            <div style={{ fontSize: 36, fontWeight: 600, color: 'var(--accent)', opacity: ramp(f, 1506, 1530) }}>beepos.sbd.design</div>
-            <div className="runs-on" style={{ opacity: ramp(f, 1524, 1548), marginTop: 18 }}>
-              Lightning in · Cashu ecash · one passkey
-            </div>
+            {/* The share image is read at thumbnail size, so it keeps only the name and the line. */}
+            {!share && (
+              <>
+                <div style={{ fontSize: 36, fontWeight: 600, color: 'var(--accent)', opacity: ramp(f, 1506, 1530) }}>
+                  beepos.sbd.design
+                </div>
+                <div className="runs-on" style={{ opacity: ramp(f, 1524, 1548), marginTop: 18 }}>
+                  Lightning in · Cashu ecash · one passkey
+                </div>
+              </>
+            )}
           </div>
         )}
 
