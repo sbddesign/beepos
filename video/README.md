@@ -20,6 +20,14 @@ That writes the three files the `/about` page uses:
 | `public/video/beepos.webm` | VP9, 1280×720 |
 | `public/video/beepos-poster.jpg` | The end card, 1280×720 |
 
+It also writes the link preview, `app/opengraph-image.jpg` (1200×630), and copies it to `app/twitter-image.jpg` and the same two names in `app/about/`. To redo only that picture:
+
+```sh
+npx remotion still Share ../app/opengraph-image.jpg --image-format=jpeg --jpeg-quality=88 --scale=0.625
+```
+
+and copy it over the other three.
+
 A 1080p master is kept in `video/out/` (not committed). A render takes several minutes and needs about 1 GB of free disk.
 
 ## Music

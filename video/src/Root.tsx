@@ -18,6 +18,8 @@ export function Root() {
         defaultProps={{ music: null as string | null }}
       />
       <Still id="Poster" component={Film} width={1920} height={1080} defaultProps={{ music: null, at: POSTER_FRAME }} />
+      {/* The link preview for the site: 1200×630 once rendered at 0.625. */}
+      <Still id="Share" component={Film} width={1920} height={1008} defaultProps={{ music: null, at: POSTER_FRAME, share: true }} />
     </>
   );
 }
