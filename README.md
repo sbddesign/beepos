@@ -34,7 +34,8 @@ The register receives to one mint, chosen for you: [Minibits](https://mint.minib
 
 - Ecash is custodial. The mint holds the bitcoin; the register holds claims on it. Cash out regularly.
 - A passkey is bound to the site's domain. A register made on one domain cannot be opened on another, except by its 12 words.
-- The passkey provider must support PRF: iCloud Keychain (iOS 18, macOS 15), Google Password Manager, 1Password, Bitwarden, and recent Windows Hello do.
+- The passkey provider must support PRF: iCloud Keychain (iOS 18, macOS 15), Google Password Manager, 1Password, Proton Pass and recent Windows Hello do. Bitwarden's stored passkeys were reported in 2026 to return no PRF output to websites; such a passkey cannot open a register.
+- On Android without Google Play (GrapheneOS and the like) the phone has no passkey manager until one is installed and chosen under Settings › Passwords, passkeys & accounts. Vanadium is then reported to work with a manager that supports PRF. Brave is not: it needs Google Play to make any passkey. None of this has been tried on such a phone by the authors.
 - While unlocked, the secret sits in the tab's session storage so a reload does not ask again. **Lock** clears it.
 - The register locks itself after 10 minutes without a touch or a key (5, 10, 30 minutes or never, in Settings). A sale waiting for its payment keeps it open. Locking clears the secret from the tab, so the passkey is needed again. A reload inside that time still does not ask.
 - Cash out over Lightning is paid by the mint. You see the mint's fee reserve before you confirm; what it does not use comes back. The ecash for a payment is set aside and saved before the mint is asked to pay, so a payment that fails or is interrupted returns it to the register.

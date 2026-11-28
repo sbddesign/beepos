@@ -359,7 +359,95 @@ test('a passkey provider without PRF gets a clear message', async ({ context, pa
   });
   await page.goto('/');
   await page.getByRole('button', { name: 'Create a passkey' }).click();
-  await expect(page.locator('p.error')).toContainText('cannot derive keys');
+  await expect(page.locator('p.error')).toContainText('cannot open a register');
+});
+
+// What a phone with no passkey manager the browser can reach does (GrapheneOS
+// without Google Play, issue #45). There is no such phone here, so the browser's
+// answers are put in by hand: these prove what beepos says for each answer, not
+// which answer a given phone gives.
+test('a browser that cannot make a passkey is told what to do, in plain words', async ({ page }) => {
+  const refuse = (how: 'create' | 'get', name: string, text: string) =>
+    page.evaluate(
+      ([how, name, text]) => {
+        navigator.credentials[how as 'create' | 'get'] = () =>
+          Promise.reject(new DOMException(text, name));
+      },
+      [how, name, text],
+    );
+  const error = page.locator('p.error');
+  const create = page.getByRole('button', { name: 'Create a passkey' });
+  const next = 'under Settings › Passwords, passkeys & accounts';
+  await page.goto('/');
+
+  // Firefox: refuses at once with the answer it gives when the owner closes the
+  // prompt (NotAllowedError, or AbortError from its Android code).
+  await refuse('create', 'NotAllowedError', 'The request is not allowed by the user agent.');
+  await create.click();
+  await expect(error).toContainText('No passkey came back');
+  await expect(error).toContainText(next);
+  await expect(create).toBeEnabled();
+  await refuse('create', 'NotSupportedError', 'clear');
+  await create.click();
+  await expect(error).not.toContainText('No passkey came back');
+  await refuse('create', 'AbortError', 'The operation was aborted.');
+  await create.click();
+  await expect(error).toContainText('No passkey came back');
+
+  // Brave.
+  await refuse('create', 'NotSupportedError', 'Not implemented');
+  await create.click();
+  await expect(error).toContainText('cannot use passkeys on this device. Try another browser');
+  await expect(error).not.toContainText('Not implemented');
+
+  // Vanadium.
+  const vanadium = 'An unknown error occurred while talking to the credential manager.';
+  for (const name of ['NotReadableError', 'UnknownError']) {
+    await refuse('create', name, vanadium);
+    await create.click();
+    await expect(error).toContainText('could not reach a passkey manager');
+    await expect(error).toContainText(next);
+    await expect(error).not.toContainText('credential manager');
+    await expect(create).toBeEnabled();
+  }
+
+  // The same on the way in with a passkey made elsewhere.
+  await refuse('get', 'NotAllowedError', 'The request is not allowed by the user agent.');
+  await page.getByRole('button', { name: 'I already have a passkey' }).click();
+  await expect(error).toContainText('No passkey came back');
+
+  // A browser with no passkeys at all.
+  await page.evaluate(() => {
+    Object.defineProperty(window, 'PublicKeyCredential', { value: undefined });
+  });
+  await create.click();
+  await expect(error).toContainText('cannot use passkeys on this device');
+});
+
+test('a passkey prompt that never comes says so while it waits', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => {
+    navigator.credentials.create = () => new Promise(() => {});
+  });
+  await page.getByRole('button', { name: 'Create a passkey' }).click();
+  const waiting = page.getByRole('status');
+  await expect(waiting).toHaveText('Waiting for your passkey…');
+  await expect(waiting).toContainText('Nothing asking for your passkey?', { timeout: 15_000 });
+  await expect(waiting).toContainText('under Settings › Passwords, passkeys & accounts');
+});
+
+test('the prompt that opens by itself on arrival fails without a word', async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem('beepos:known', '1');
+    navigator.credentials.get = () =>
+      Promise.reject(new DOMException('The operation is not allowed.', 'NotAllowedError'));
+  });
+  await page.goto('/');
+  const unlock = page.getByRole('button', { name: 'Unlock with passkey' });
+  await expect(unlock).toBeEnabled();
+  await expect(page.locator('p.error')).toHaveCount(0);
+  await unlock.click();
+  await expect(page.locator('p.error')).toContainText('No passkey came back');
 });
 
 test('ring up in dollars, then in yen', async ({ context, page }, testInfo) => {
