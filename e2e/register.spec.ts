@@ -398,6 +398,8 @@ test('a browser that cannot make a passkey is told what to do, in plain words', 
   await refuse('create', 'NotSupportedError', 'Not implemented');
   await create.click();
   await expect(error).toContainText('cannot use passkeys on this device. Try another browser');
+  await expect(error).toContainText('without Google Play, use Vanadium');
+  await expect(error).not.toContainText('Chrome');
   await expect(error).not.toContainText('Not implemented');
 
   // Vanadium.
@@ -432,7 +434,10 @@ test('a passkey prompt that never comes says so while it waits', async ({ page }
   await page.getByRole('button', { name: 'Create a passkey' }).click();
   const waiting = page.getByRole('status');
   await expect(waiting).toHaveText('Waiting for your passkey…');
-  await expect(waiting).toContainText('Nothing asking for your passkey?', { timeout: 15_000 });
+  await expect(waiting).toContainText(
+    'Nothing asking for your passkey? This browser may have no passkey manager',
+    { timeout: 15_000 },
+  );
   await expect(waiting).toContainText('under Settings › Passwords, passkeys & accounts');
 });
 
