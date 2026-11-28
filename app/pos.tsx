@@ -18,7 +18,7 @@ import {
 } from '@/lib/fiat';
 import { formatBitcoin, timeAgo } from '@/lib/format';
 import { deriveKeys } from '@/lib/keys';
-import { PasskeyError, register as createPasskey, unlock } from '@/lib/passkey';
+import { NO_PROMPT, PasskeyError, register as createPasskey, unlock } from '@/lib/passkey';
 import {
   MAX_PRESETS,
   MAX_PRESET_NAME,
@@ -36,6 +36,8 @@ const SESSION_KEY = 'beepos:session';
 const ACTIVE_KEY = 'beepos:active';
 const KNOWN_KEY = 'beepos:known';
 const MAX_DIGITS = 9;
+// A passkey prompt left open this long gets a line about what to do if there is none.
+const SLOW_PROMPT_MS = 10_000;
 
 function message(err: unknown): string {
   return err instanceof Error && err.message ? err.message : 'Something went wrong.';
@@ -144,6 +146,16 @@ export function Pos({ mintUrl }: { mintUrl: string }) {
   const [busy, setBusy] = useState<'unlock' | 'create' | 'open' | null>('open');
   const [error, setError] = useState('');
   const [known, setKnown] = useState(false);
+  // Some browsers take the request for a passkey and never answer it, with nothing
+  // on screen. The wait is said at once, and what to do about it after a while.
+  const [slow, setSlow] = useState(false);
+  const asking = busy === 'unlock' || busy === 'create';
+  useEffect(() => {
+    setSlow(false);
+    if (!asking) return;
+    const timer = setTimeout(() => setSlow(true), SLOW_PROMPT_MS);
+    return () => clearTimeout(timer);
+  }, [asking]);
 
   const open = useCallback(
     async (prf: Uint8Array) => {
@@ -169,8 +181,10 @@ export function Pos({ mintUrl }: { mintUrl: string }) {
         stamp();
         await open(prf);
       } catch (err) {
-        const cancelled = err instanceof PasskeyError && err.kind === 'cancelled';
-        if (!quiet && !cancelled) setError(message(err));
+        // The owner pressed a button, so even "no passkey came back" is said: some
+        // browsers answer that way at once when they have no passkey manager to ask.
+        // Only the prompt that opens by itself on arrival fails without a word.
+        if (!quiet) setError(message(err));
       } finally {
         setBusy(null);
       }
@@ -232,6 +246,11 @@ export function Pos({ mintUrl }: { mintUrl: string }) {
               {known ? 'Set up a new register' : 'I already have a passkey'}
             </button>
           </div>
+        )}
+        {asking && (
+          <p className="muted" role="status">
+            Waiting for your passkey… {slow && NO_PROMPT}
+          </p>
         )}
         {error && (
           <p className="error" role="alert">
