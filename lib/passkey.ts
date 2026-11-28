@@ -36,7 +36,7 @@ const NEXT_STEP =
 const NO_ANSWER = `No passkey came back. If nothing asked you for one, this browser has no passkey manager it can use. ${NEXT_STEP}`;
 // Chrome is not named: on a phone without Google Play it fails the way Brave does.
 const UNSUPPORTED =
-  'This browser cannot use passkeys on this device. Try another browser. On GrapheneOS or another Android phone without Google Play, use Vanadium, with a passkey manager such as Proton Pass or 1Password chosen under Settings › Passwords, passkeys & accounts.';
+  'This browser cannot use passkeys on this device. Try another browser. On GrapheneOS, use Vanadium, with a passkey manager such as Proton Pass or 1Password chosen under Settings › Passwords, passkeys & accounts.';
 const BROKEN = `This browser could not reach a passkey manager. ${NEXT_STEP}`;
 /** For a browser that takes the request and then never answers it. */
 export const NO_PROMPT = `Nothing asking for your passkey? This browser may have no passkey manager it can use. ${NEXT_STEP}`;

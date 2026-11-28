@@ -398,7 +398,7 @@ test('a browser that cannot make a passkey is told what to do, in plain words', 
   await refuse('create', 'NotSupportedError', 'Not implemented');
   await create.click();
   await expect(error).toContainText('cannot use passkeys on this device. Try another browser');
-  await expect(error).toContainText('without Google Play, use Vanadium');
+  await expect(error).toContainText('Try another browser. On GrapheneOS, use Vanadium, with a passkey manager');
   await expect(error).not.toContainText('Chrome');
   await expect(error).not.toContainText('Not implemented');
 
